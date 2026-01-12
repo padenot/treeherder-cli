@@ -1,30 +1,43 @@
-# treeherder-check
+# treeherder-cli
 
-A CLI tool for Firefox developers to fetch and summarize Treeherder test failure
-information as Markdown. Written by and for Claude Code.
+Fetch and analyze Firefox CI logs from Treeherder, the CI system of the Firefox
+project (and others).
+
+This CLI tool has been written by and for Claude Code.
 
 ## Usage
 
 ```bash
-# From a Treeherder URL
-treeherder-check "https://treeherder.mozilla.org/jobs?repo=try&revision=abc123"
+# From revision hash or Treeherder URL
+treeherder-cli abc123
+treeherder-cli "https://treeherder.mozilla.org/jobs?repo=try&revision=abc123"
 
-# From a revision hash
-treeherder-check abc123
+# Download all logs to persistent cache
+treeherder-cli abc123 --fetch-logs --cache-dir ./logs --match-filter all
 
-# Show stack traces
-treeherder-check --show-stack-traces abc123
+# Query cached logs without re-downloading
+treeherder-cli --use-cache --cache-dir ./logs --pattern "dom/media.*\.html"
 
-# Filter jobs by name (regexp or substring matching)
-treeherder-check --filter "mochitest" abc123
-
-# Specify repository (defaults to "try")
-treeherder-check --repo autoland abc123
+# Filter specific job types
+treeherder-cli abc123 --filter "mochitest"
 ```
 
-## Installation
+## Features
 
-Clone, then:
+- Fetch test results from Treeherder
+- Download and cache logs persistently
+- Search logs with regex patterns (local-only, no re-download)
+- Filter by job name and result (failure/success/all)
+- Markdown output optimized for LLM consumption
+
+## Cache Workflow
+
+1. Download logs once: `--fetch-logs --cache-dir <path>`
+2. Query many times: `--use-cache --cache-dir <path> --pattern <regex>`
+
+Cache structure: `cache_dir/metadata.json` + `job_<id>/*.log` files
+
+## Installation
 
 ```bash
 cargo install --path .

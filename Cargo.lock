@@ -1320,7 +1320,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "treeherder-check"
+name = "treeherder-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1331,6 +1331,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "tempfile",
  "tokio",
  "url",
 ]

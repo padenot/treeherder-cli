@@ -1,20 +1,31 @@
 use anyhow::Result;
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
+use regex::Regex;
 use reqwest::Client;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
+use tempfile::TempDir;
 use url::Url;
+
+#[derive(Debug, Clone, ValueEnum)]
+enum MatchFilter {
+    Failure,
+    Success,
+    All,
+}
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "treeherder-check",
+    name = "treeherder-cli",
     about = "Fetch and summarize Treeherder test results for Firefox developers"
 )]
 struct Args {
-    #[arg(help = "Treeherder URL or revision hash")]
-    input: String,
+    #[arg(help = "Treeherder URL or revision hash (not needed with --use-cache)")]
+    input: Option<String>,
     #[arg(long, default_value = "try", help = "Repository name")]
     repo: String,
     #[arg(long, help = "Show stack traces in error summaries")]
@@ -24,6 +35,30 @@ struct Args {
         help = "Only show jobs matching this regex pattern (applied to job_type_name)"
     )]
     filter: Option<String>,
+    #[arg(long, help = "Fetch all logs for each job")]
+    fetch_logs: bool,
+    #[arg(
+        long,
+        value_enum,
+        default_value = "failure",
+        help = "Filter which jobs to apply pattern matching on"
+    )]
+    match_filter: MatchFilter,
+    #[arg(
+        long,
+        help = "Regex pattern to search for in logs (only used with --fetch-logs)"
+    )]
+    pattern: Option<String>,
+    #[arg(
+        long,
+        help = "Directory to store/read cached logs (persistent storage, not temp)"
+    )]
+    cache_dir: Option<String>,
+    #[arg(
+        long,
+        help = "Use cached logs without downloading (requires --cache-dir)"
+    )]
+    use_cache: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -43,7 +78,7 @@ struct JobsResponse {
     results: Vec<Vec<serde_json::Value>>,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Serialize, Debug, Clone)]
 struct Job {
     id: u64,
     job_type_name: String,
@@ -92,6 +127,29 @@ struct ErrorLine {
     message: Option<String>,
     #[serde(default)]
     stack: Option<String>,
+}
+
+#[derive(Debug)]
+struct LogMatch {
+    log_name: String,
+    line_number: usize,
+    line_content: String,
+}
+
+#[derive(Debug)]
+struct JobWithLogs {
+    job: Job,
+    errors: Vec<ErrorLine>,
+    log_matches: Vec<LogMatch>,
+    log_dir: Option<PathBuf>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct CachedPushMetadata {
+    revision: String,
+    push_id: u64,
+    repo: String,
+    jobs: Vec<Job>,
 }
 
 fn extract_revision(input: &str) -> Result<String> {
@@ -234,11 +292,164 @@ async fn fetch_job_details_with_errors(
     Ok((job, all_errors))
 }
 
+async fn fetch_and_save_log(
+    client: &Client,
+    log_url: &str,
+    log_name: &str,
+    job_dir: &PathBuf,
+) -> Result<PathBuf> {
+    let response = client.get(log_url).send().await?;
+    let content = response.text().await?;
+
+    let log_path = job_dir.join(format!("{}.log", log_name));
+    fs::write(&log_path, content)?;
+
+    Ok(log_path)
+}
+
+fn search_log_file(log_path: &PathBuf, pattern: &Regex, log_name: &str) -> Result<Vec<LogMatch>> {
+    let content = fs::read_to_string(log_path)?;
+    let mut matches = Vec::new();
+
+    for (line_num, line) in content.lines().enumerate() {
+        if pattern.is_match(line) {
+            matches.push(LogMatch {
+                log_name: log_name.to_string(),
+                line_number: line_num + 1,
+                line_content: line.to_string(),
+            });
+        }
+    }
+
+    Ok(matches)
+}
+
+fn save_cache_metadata(cache_dir: &PathBuf, metadata: &CachedPushMetadata) -> Result<()> {
+    let metadata_path = cache_dir.join("metadata.json");
+    let json = serde_json::to_string_pretty(metadata)?;
+    fs::write(metadata_path, json)?;
+    Ok(())
+}
+
+fn load_cache_metadata(cache_dir: &PathBuf) -> Result<CachedPushMetadata> {
+    let metadata_path = cache_dir.join("metadata.json");
+    let json = fs::read_to_string(metadata_path)?;
+    let metadata: CachedPushMetadata = serde_json::from_str(&json)?;
+    Ok(metadata)
+}
+
+fn search_cached_logs(
+    cache_dir: &PathBuf,
+    jobs: &[Job],
+    pattern: Option<&Regex>,
+) -> Result<Vec<JobWithLogs>> {
+    let mut results = Vec::new();
+
+    for job in jobs {
+        let job_dir = cache_dir.join(format!("job_{}", job.id));
+
+        if !job_dir.exists() {
+            eprintln!("Warning: Job directory not found: {}", job_dir.display());
+            continue;
+        }
+
+        let mut log_matches = Vec::new();
+
+        // Search all log files in the job directory
+        if let Some(regex) = pattern {
+            let log_files = fs::read_dir(&job_dir)?;
+            for entry in log_files {
+                if let Ok(entry) = entry {
+                    let path = entry.path();
+                    if path.is_file() && path.extension().and_then(|s| s.to_str()) == Some("log") {
+                        let log_name = path.file_stem()
+                            .and_then(|s| s.to_str())
+                            .unwrap_or("unknown")
+                            .to_string();
+
+                        if let Ok(matches) = search_log_file(&path, regex, &log_name) {
+                            log_matches.extend(matches);
+                        }
+                    }
+                }
+            }
+        }
+
+        results.push(JobWithLogs {
+            job: job.clone(),
+            errors: vec![], // Error summaries not loaded from cache
+            log_matches,
+            log_dir: Some(job_dir),
+        });
+    }
+
+    Ok(results)
+}
+
+async fn fetch_job_with_full_logs(
+    client: &Client,
+    repo: &str,
+    job: Job,
+    temp_dir: &PathBuf,
+    pattern: Option<&Regex>,
+) -> Result<JobWithLogs> {
+    let job_detail = fetch_job_details(client, repo, job.id).await?;
+
+    // Create directory for this job
+    let job_dir = temp_dir.join(format!("job_{}", job.id));
+    fs::create_dir_all(&job_dir)?;
+
+    // Fetch error summaries (existing functionality)
+    let error_futures: Vec<_> = job_detail
+        .logs
+        .iter()
+        .filter(|log_ref| log_ref.name.contains("error") || log_ref.name.contains("summary"))
+        .map(|log_ref| fetch_error_summary(client, &log_ref.url))
+        .collect();
+
+    let error_results = futures::future::join_all(error_futures).await;
+    let mut all_errors = Vec::new();
+    for result in error_results {
+        if let Ok(errors) = result {
+            all_errors.extend(errors);
+        }
+    }
+
+    // Fetch all logs and save them
+    let log_futures: Vec<_> = job_detail
+        .logs
+        .iter()
+        .map(|log_ref| fetch_and_save_log(client, &log_ref.url, &log_ref.name, &job_dir))
+        .collect();
+
+    let log_results = futures::future::join_all(log_futures).await;
+
+    // Search logs for pattern if provided
+    let mut log_matches = Vec::new();
+    if let Some(regex) = pattern {
+        for (log_ref, log_result) in job_detail.logs.iter().zip(log_results.iter()) {
+            if let Ok(log_path) = log_result {
+                if let Ok(matches) = search_log_file(log_path, regex, &log_ref.name) {
+                    log_matches.extend(matches);
+                }
+            }
+        }
+    }
+
+    Ok(JobWithLogs {
+        job,
+        errors: all_errors,
+        log_matches,
+        log_dir: Some(job_dir),
+    })
+}
+
 fn format_markdown_summary(
     revision: &str,
     push_id: u64,
-    failed_jobs: &[(Job, Vec<ErrorLine>)],
+    jobs: &[JobWithLogs],
     show_stack_traces: bool,
+    fetch_logs: bool,
 ) -> String {
     let mut output = String::new();
 
@@ -246,21 +457,37 @@ fn format_markdown_summary(
     output.push_str(&format!("**Revision:** `{}`\n", revision));
     output.push_str(&format!("**Push ID:** `{}`\n\n", push_id));
 
-    if failed_jobs.is_empty() {
-        output.push_str("✅ **No failed jobs found!**\n");
+    if jobs.is_empty() {
+        output.push_str("✅ **No jobs found matching criteria!**\n");
         return output;
     }
 
-    output.push_str(&format!(
-        "## Failed Jobs ({} failures)\n\n",
-        failed_jobs.len()
-    ));
+    let failed_jobs: Vec<_> = jobs.iter().filter(|j| j.job.result != "success").collect();
 
-    for (job, errors) in failed_jobs {
+    if !failed_jobs.is_empty() {
+        output.push_str(&format!(
+            "## Failed Jobs ({} failures)\n\n",
+            failed_jobs.len()
+        ));
+    } else {
+        output.push_str("✅ **No failed jobs found!**\n\n");
+    }
+
+    for job_with_logs in jobs {
+        let job = &job_with_logs.job;
+        let errors = &job_with_logs.errors;
+        let log_matches = &job_with_logs.log_matches;
+
         output.push_str(&format!("### {} - {}\n\n", job.job_type_name, job.platform));
         output.push_str(&format!("- **Job ID:** `{}`\n", job.id));
         output.push_str(&format!("- **Symbol:** `{}`\n", job.job_type_symbol));
-        output.push_str(&format!("- **Platform:** `{}`\n\n", job.platform));
+        output.push_str(&format!("- **Platform:** `{}`\n", job.platform));
+        output.push_str(&format!("- **Result:** `{}`\n", job.result));
+
+        if let Some(log_dir) = &job_with_logs.log_dir {
+            output.push_str(&format!("- **Logs saved to:** `{}`\n", log_dir.display()));
+        }
+        output.push('\n');
 
         if !errors.is_empty() {
             output.push_str("**Error Summary:**\n\n");
@@ -285,8 +512,29 @@ fn format_markdown_summary(
                 output.push('\n');
             }
             output.push('\n');
-        } else {
+        } else if !fetch_logs {
             output.push_str("*No error summary available*\n\n");
+        }
+
+        if fetch_logs && !log_matches.is_empty() {
+            output.push_str(&format!("**Pattern Matches ({} matches):**\n\n", log_matches.len()));
+            let max_matches_to_show = 20;
+            for (idx, log_match) in log_matches.iter().take(max_matches_to_show).enumerate() {
+                output.push_str(&format!(
+                    "{}. **{}:{}** - `{}`\n",
+                    idx + 1,
+                    log_match.log_name,
+                    log_match.line_number,
+                    log_match.line_content.chars().take(200).collect::<String>()
+                ));
+            }
+            if log_matches.len() > max_matches_to_show {
+                output.push_str(&format!(
+                    "\n*... and {} more matches (see log files)*\n",
+                    log_matches.len() - max_matches_to_show
+                ));
+            }
+            output.push('\n');
         }
 
         output.push_str("---\n\n");
@@ -298,6 +546,74 @@ fn format_markdown_summary(
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
+
+    // Validate arguments
+    if !args.use_cache && args.input.is_none() {
+        anyhow::bail!("INPUT is required when not using --use-cache");
+    }
+
+    // Handle use-cache mode (local grep only)
+    if args.use_cache {
+        let cache_dir = args.cache_dir
+            .ok_or_else(|| anyhow::anyhow!("--use-cache requires --cache-dir to be specified"))?;
+        let cache_path = PathBuf::from(&cache_dir);
+
+        if !cache_path.exists() {
+            anyhow::bail!("Cache directory does not exist: {}", cache_path.display());
+        }
+
+        println!("Loading cached data from: {}", cache_path.display());
+
+        let metadata = load_cache_metadata(&cache_path)?;
+        println!("Push ID: {}, Revision: {}", metadata.push_id, metadata.revision);
+        println!("Cached jobs: {}", metadata.jobs.len());
+
+        // Apply filters to cached jobs
+        let mut filtered_jobs = metadata.jobs.clone();
+
+        // Apply match filter
+        filtered_jobs = match args.match_filter {
+            MatchFilter::Failure => filtered_jobs
+                .into_iter()
+                .filter(|job| job.result == "testfailed" || job.result == "busted")
+                .collect(),
+            MatchFilter::Success => filtered_jobs
+                .into_iter()
+                .filter(|job| job.result == "success")
+                .collect(),
+            MatchFilter::All => filtered_jobs,
+        };
+
+        // Apply job name filter
+        if let Some(filter_pattern) = &args.filter {
+            filtered_jobs.retain(|job| job.job_type_name.contains(filter_pattern));
+        }
+
+        println!("Jobs matching filter: {}", filtered_jobs.len());
+
+        // Compile regex pattern if provided
+        let pattern = if let Some(pattern_str) = &args.pattern {
+            Some(Regex::new(pattern_str)?)
+        } else {
+            None
+        };
+
+        // Search cached logs
+        let jobs_with_logs = search_cached_logs(&cache_path, &filtered_jobs, pattern.as_ref())?;
+
+        let summary = format_markdown_summary(
+            &metadata.revision,
+            metadata.push_id,
+            &jobs_with_logs,
+            args.show_stack_traces,
+            true, // fetch_logs mode for formatting
+        );
+        println!("{}", summary);
+
+        return Ok(());
+    }
+
+    // Normal download mode
     let client = Client::new();
 
     // Create progress bar
@@ -309,71 +625,192 @@ async fn main() -> Result<()> {
     );
 
     pb.set_message("Extracting revision from input");
-    let revision = extract_revision(&args.input)?;
+    let input = args.input.as_ref().unwrap(); // Safe because we validated above
+    let revision = extract_revision(input)?;
 
     pb.set_message("Fetching push ID");
     let push_id = fetch_push_id(&client, &args.repo, &revision).await?;
 
     pb.set_message("Fetching jobs");
-    let jobs = fetch_jobs(&client, push_id).await?;
+    let all_jobs = fetch_jobs(&client, push_id).await?;
 
-    let mut failed_jobs: Vec<_> = jobs
-        .into_iter()
-        .filter(|job| job.result == "testfailed" || job.result == "busted")
-        .collect();
+    // Filter jobs based on match_filter
+    let mut filtered_jobs: Vec<_> = match args.match_filter {
+        MatchFilter::Failure => all_jobs
+            .into_iter()
+            .filter(|job| job.result == "testfailed" || job.result == "busted")
+            .collect(),
+        MatchFilter::Success => all_jobs
+            .into_iter()
+            .filter(|job| job.result == "success")
+            .collect(),
+        MatchFilter::All => all_jobs,
+    };
 
     // Apply job name filter if provided
     if let Some(filter_pattern) = &args.filter {
-        failed_jobs.retain(|job| job.job_type_name.contains(filter_pattern));
+        filtered_jobs.retain(|job| job.job_type_name.contains(filter_pattern));
     }
 
-    if failed_jobs.is_empty() {
-        pb.finish_with_message("No failed jobs found");
+    if filtered_jobs.is_empty() {
+        pb.finish_with_message("No jobs found matching criteria");
+        println!("No jobs found matching the specified criteria");
+        return Ok(());
+    }
+
+    pb.finish_with_message(format!("Found {} jobs matching criteria", filtered_jobs.len()));
+
+    // Determine storage location for logs
+    let (_temp_dir_guard, log_storage_path) = if args.fetch_logs {
+        if let Some(cache_dir) = &args.cache_dir {
+            // Use persistent cache directory
+            let cache_path = PathBuf::from(cache_dir);
+            fs::create_dir_all(&cache_path)?;
+            (None, cache_path)
+        } else {
+            // Use temporary directory
+            let temp_dir = TempDir::new()?;
+            let temp_path = temp_dir.path().to_path_buf();
+            (Some(temp_dir), temp_path)
+        }
     } else {
-        pb.finish_with_message("Found failed jobs");
-    }
+        (None, PathBuf::from("/tmp"))
+    };
 
-    // Create progress bar for job details fetching
-    let pb_jobs = ProgressBar::new(failed_jobs.len() as u64);
-    pb_jobs.set_style(
-        ProgressStyle::default_bar()
-            .template("{bar:40.cyan/blue} {pos}/{len} {msg}")
-            .unwrap(),
-    );
-    pb_jobs.set_message("Fetching job details in parallel");
+    // Compile regex pattern if provided
+    let pattern = if let Some(pattern_str) = &args.pattern {
+        Some(Regex::new(pattern_str)?)
+    } else {
+        None
+    };
 
     let client = Arc::new(client);
-    let pb_jobs = Arc::new(pb_jobs);
 
-    // Fetch job details in parallel with concurrency limit
-    let failed_jobs_with_errors: Vec<_> = stream::iter(failed_jobs)
-        .map(|job| {
-            let client = Arc::clone(&client);
-            let repo = args.repo.clone();
-            let pb_jobs = Arc::clone(&pb_jobs);
+    if args.fetch_logs {
+        // Create progress bar for log fetching
+        let pb_logs = ProgressBar::new(filtered_jobs.len() as u64);
+        pb_logs.set_style(
+            ProgressStyle::default_bar()
+                .template("{bar:40.cyan/blue} {pos}/{len} {msg}")
+                .unwrap()
+                .progress_chars("=>-"),
+        );
+        pb_logs.set_message("Fetching and processing logs");
 
-            async move {
-                let result = fetch_job_details_with_errors(&client, &repo, job).await;
-                pb_jobs.inc(1);
-                result
-            }
-        })
-        .buffer_unordered(10) // Limit concurrent requests to 10
-        .collect::<Vec<_>>()
-        .await
-        .into_iter()
-        .filter_map(|result| result.ok())
-        .collect();
+        let pb_logs = Arc::new(pb_logs);
 
-    pb_jobs.finish_with_message("Completed fetching job details");
+        // Fetch jobs with full logs
+        let jobs_with_logs: Vec<_> = stream::iter(filtered_jobs.clone())
+            .map(|job| {
+                let client = Arc::clone(&client);
+                let repo = args.repo.clone();
+                let pb_logs = Arc::clone(&pb_logs);
+                let log_path = log_storage_path.clone();
+                let pattern = pattern.as_ref();
 
-    let summary = format_markdown_summary(
-        &revision,
-        push_id,
-        &failed_jobs_with_errors,
-        args.show_stack_traces,
-    );
-    println!("{}", summary);
+                async move {
+                    let result = fetch_job_with_full_logs(&client, &repo, job, &log_path, pattern).await;
+                    pb_logs.inc(1);
+                    result
+                }
+            })
+            .buffer_unordered(5) // Limit concurrent requests to 5 for full log fetching
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .filter_map(|result| result.ok())
+            .collect();
+
+        pb_logs.finish_with_message("Completed fetching and processing logs");
+
+        // Save metadata if using persistent cache
+        if args.cache_dir.is_some() {
+            let metadata = CachedPushMetadata {
+                revision: revision.clone(),
+                push_id,
+                repo: args.repo.clone(),
+                jobs: filtered_jobs.clone(),
+            };
+            save_cache_metadata(&log_storage_path, &metadata)?;
+            println!("\nMetadata saved to: {}", log_storage_path.join("metadata.json").display());
+        }
+
+        let summary = format_markdown_summary(
+            &revision,
+            push_id,
+            &jobs_with_logs,
+            args.show_stack_traces,
+            args.fetch_logs,
+        );
+        println!("{}", summary);
+
+        if let Some(temp_dir) = _temp_dir_guard.as_ref() {
+            println!(
+                "\nLogs are stored in temporary directory: {}",
+                temp_dir.path().display()
+            );
+            println!("The directory will be automatically cleaned up when the program exits.");
+        } else if args.cache_dir.is_some() {
+            println!(
+                "\nLogs are stored persistently in: {}",
+                log_storage_path.display()
+            );
+            println!("Use --use-cache --cache-dir {} to query these logs later.", log_storage_path.display());
+        }
+    } else {
+        // Original behavior: fetch only error summaries
+        let pb_jobs = ProgressBar::new(filtered_jobs.len() as u64);
+        pb_jobs.set_style(
+            ProgressStyle::default_bar()
+                .template("{bar:40.cyan/blue} {pos}/{len} {msg}")
+                .unwrap()
+                .progress_chars("=>-"),
+        );
+        pb_jobs.set_message("Fetching job details");
+
+        let pb_jobs = Arc::new(pb_jobs);
+
+        let jobs_with_errors: Vec<_> = stream::iter(filtered_jobs)
+            .map(|job| {
+                let client = Arc::clone(&client);
+                let repo = args.repo.clone();
+                let pb_jobs = Arc::clone(&pb_jobs);
+
+                async move {
+                    let result = fetch_job_details_with_errors(&client, &repo, job).await;
+                    pb_jobs.inc(1);
+                    result
+                }
+            })
+            .buffer_unordered(10)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .filter_map(|result| result.ok())
+            .collect();
+
+        pb_jobs.finish_with_message("Completed fetching job details");
+
+        // Convert to JobWithLogs format
+        let jobs_with_logs: Vec<_> = jobs_with_errors
+            .into_iter()
+            .map(|(job, errors)| JobWithLogs {
+                job,
+                errors,
+                log_matches: vec![],
+                log_dir: None,
+            })
+            .collect();
+
+        let summary = format_markdown_summary(
+            &revision,
+            push_id,
+            &jobs_with_logs,
+            args.show_stack_traces,
+            args.fetch_logs,
+        );
+        println!("{}", summary);
+    }
 
     Ok(())
 }
