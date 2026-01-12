@@ -59,6 +59,8 @@ struct Args {
         help = "Use cached logs without downloading (requires --cache-dir)"
     )]
     use_cache: bool,
+    #[arg(long, help = "Include jobs classified as intermittent")]
+    include_intermittent: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -589,6 +591,11 @@ async fn main() -> Result<()> {
             filtered_jobs.retain(|job| job.job_type_name.contains(filter_pattern));
         }
 
+        // Filter out intermittent jobs unless explicitly included
+        if !args.include_intermittent {
+            filtered_jobs.retain(|job| job.failure_classification_id.map_or(true, |id| id != 4));
+        }
+
         println!("Jobs matching filter: {}", filtered_jobs.len());
 
         // Compile regex pattern if provided
@@ -650,6 +657,11 @@ async fn main() -> Result<()> {
     // Apply job name filter if provided
     if let Some(filter_pattern) = &args.filter {
         filtered_jobs.retain(|job| job.job_type_name.contains(filter_pattern));
+    }
+
+    // Filter out intermittent jobs unless explicitly included
+    if !args.include_intermittent {
+        filtered_jobs.retain(|job| job.failure_classification_id.map_or(true, |id| id != 4));
     }
 
     if filtered_jobs.is_empty() {
