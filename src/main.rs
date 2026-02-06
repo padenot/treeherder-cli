@@ -24,6 +24,18 @@ use util::*;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let version_checker =
+        moz_cli_version_check::VersionChecker::new("treeherder-cli", env!("CARGO_PKG_VERSION"));
+    version_checker.check_async();
+
+    let result = run().await;
+
+    version_checker.print_warning();
+
+    result
+}
+
+async fn run() -> Result<()> {
     let mut args = Args::parse();
 
     if !args.json && is_running_under_coding_agent() {

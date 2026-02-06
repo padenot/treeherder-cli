@@ -1,9 +1,15 @@
 [package]
 name = "treeherder-cli"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Fetch errors from a Firefox CI push on Treeherder, formatted as markdown"
 license = "MPL-2.0"
+repository = "https://github.com/padenot/treeherder-cli"
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }.{ archive-format }"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
 
 [dependencies]
 reqwest = { version = "0.11", features = ["json"] }
@@ -20,6 +26,7 @@ tempfile = "3.8"
 colored = "2.1"
 comfy-table = "=7.0.0"
 notify-rust = "4.11"
+moz-cli-version-check = "0.1"
 
 [dev-dependencies]
 assert_cmd = "2.0"
