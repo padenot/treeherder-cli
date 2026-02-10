@@ -16,6 +16,7 @@ pub struct PushResult {
 #[derive(Deserialize, Debug)]
 pub struct JobsResponse {
     pub results: Vec<Vec<serde_json::Value>>,
+    pub job_property_names: Vec<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
