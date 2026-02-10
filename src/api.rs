@@ -2,6 +2,7 @@ use crate::models::*;
 use anyhow::Result;
 use regex::Regex;
 use reqwest::Client;
+use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use url::Url;
@@ -86,41 +87,70 @@ pub async fn fetch_jobs(client: &Client, push_id: u64) -> Result<Vec<Job>> {
 
     let response: JobsResponse = client.get(&url).send().await?.json().await?;
 
+    // Build field name → index mapping from job_property_names
+    let field_map: HashMap<&str, usize> = response
+        .job_property_names
+        .iter()
+        .enumerate()
+        .map(|(idx, name)| (name.as_str(), idx))
+        .collect();
+
     let mut jobs = Vec::new();
     for job_array in response.results {
-        if job_array.len() >= 18 {
-            if let (
-                Some(id),
-                Some(job_type_name),
-                Some(job_type_symbol),
-                Some(platform),
-                Some(result),
-                Some(state),
-            ) = (
-                job_array[1].as_u64(),
-                job_array[5].as_str().map(|s| s.to_string()),
-                job_array[3].as_str().map(|s| s.to_string()),
-                job_array[7].as_str().map(|s| s.to_string()),
-                job_array[10].as_str().map(|s| s.to_string()),
-                job_array[12].as_str().map(|s| s.to_string()),
-            ) {
-                let platform_option = job_array[17]
-                    .as_str()
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| "".to_string());
-                let duration = job_array[16].as_u64();
-                jobs.push(Job {
-                    id,
-                    job_type_name,
-                    job_type_symbol,
-                    platform,
-                    platform_option,
-                    result,
-                    state,
-                    failure_classification_id: job_array[0].as_u64(),
-                    duration,
-                });
-            }
+        // Helper to safely get field by name for this specific job_array
+        let get_field = |field_name: &str| -> Option<&serde_json::Value> {
+            field_map
+                .get(field_name)
+                .and_then(|&idx| job_array.get(idx))
+        };
+
+        // Extract fields by NAME instead of hardcoded index
+        if let (
+            Some(id),
+            Some(job_type_name),
+            Some(job_type_symbol),
+            Some(platform),
+            Some(result),
+            Some(state),
+        ) = (
+            get_field("id").and_then(|v| v.as_u64()),
+            get_field("job_type_name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            get_field("job_type_symbol")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            get_field("platform")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            get_field("result")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            get_field("state")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+        ) {
+            let platform_option = get_field("platform_option")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+                .unwrap_or_default();
+
+            let duration = get_field("duration").and_then(|v| v.as_u64());
+
+            let failure_classification_id =
+                get_field("failure_classification_id").and_then(|v| v.as_u64());
+
+            jobs.push(Job {
+                id,
+                job_type_name,
+                job_type_symbol,
+                platform,
+                platform_option,
+                result,
+                state,
+                failure_classification_id,
+                duration,
+            });
         }
     }
 
