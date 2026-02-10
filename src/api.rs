@@ -6,6 +6,46 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use url::Url;
 
+pub async fn fetch_lando_job_status(client: &Client, job_id: u64) -> Result<LandoJobResponse> {
+    let url = format!(
+        "https://api.lando.services.mozilla.com/landing_jobs/{}",
+        job_id
+    );
+
+    let response: LandoJobResponse = client.get(&url).send().await?.json().await?;
+
+    if response.id != job_id {
+        anyhow::bail!(
+            "Lando API returned unexpected job ID: expected {}, got {}",
+            job_id,
+            response.id
+        );
+    }
+
+    Ok(response)
+}
+
+pub async fn fetch_commit_from_lando_job(client: &Client, job_id: u64) -> Result<String> {
+    let response = fetch_lando_job_status(client, job_id).await?;
+
+    if response.status != "LANDED" {
+        anyhow::bail!(
+            "Lando job {} has not landed yet (status: {}). Only LANDED jobs have commit IDs.",
+            job_id,
+            response.status
+        );
+    }
+
+    if let Some(commit_id) = response.commit_id {
+        Ok(commit_id)
+    } else {
+        anyhow::bail!(
+            "Lando job {} is marked as LANDED but has no commit_id",
+            job_id
+        )
+    }
+}
+
 pub fn extract_revision(input: &str) -> Result<String> {
     if input.starts_with("http") {
         let url = Url::parse(input)?;

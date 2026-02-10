@@ -14,6 +14,12 @@ cargo install --path .
 # Basic: get failed jobs as JSON
 treeherder-cli a13b9fc22101 --json
 
+# Use a Lando job ID instead of commit hash
+treeherder-cli --lando-job-id 12345 --json
+
+# Watch a Lando job until it lands, then monitor Treeherder jobs
+treeherder-cli --lando-job-id 12345 --watch --notify
+
 # Filter by job name or platform
 treeherder-cli a13b9fc22101 --filter "mochitest" --json
 treeherder-cli a13b9fc22101 --platform "linux.*64" --json
