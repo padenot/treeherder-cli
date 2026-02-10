@@ -34,48 +34,72 @@ pub fn format_markdown_summary(
         return output;
     }
 
-    let failed_jobs: Vec<_> = jobs.iter().filter(|j| j.job.result != "success").collect();
+    let failed_count = jobs
+        .iter()
+        .filter(|j| {
+            j.job.state == "completed"
+                && (j.job.result == "testfailed" || j.job.result == "busted")
+        })
+        .count();
 
-    if !failed_jobs.is_empty() {
+    let unknown_count = jobs
+        .iter()
+        .filter(|j| j.job.result == "unknown")
+        .count();
+
+    // Show header based on whether there are failures
+    if failed_count > 0 {
         output.push_str(&format!(
             "{} ({} failures)\n\n",
             "Failed Jobs".red().bold(),
-            failed_jobs.len()
+            failed_count
         ));
-
-        let mut table = Table::new();
-        table
-            .load_preset(UTF8_FULL)
-            .set_content_arrangement(ContentArrangement::Dynamic)
-            .set_header(vec![
-                Cell::new("Job ID").add_attribute(Attribute::Bold),
-                Cell::new("Job Type").add_attribute(Attribute::Bold),
-                Cell::new("Platform").add_attribute(Attribute::Bold),
-                Cell::new("Result").add_attribute(Attribute::Bold),
-                Cell::new("Errors").add_attribute(Attribute::Bold),
-            ]);
-
-        for job_with_logs in jobs {
-            let job = &job_with_logs.job;
-            let result_cell = match job.result.as_str() {
-                "success" => Cell::new(&job.result).fg(Color::Green),
-                "testfailed" | "busted" => Cell::new(&job.result).fg(Color::Red),
-                _ => Cell::new(&job.result).fg(Color::Yellow),
-            };
-
-            table.add_row(vec![
-                Cell::new(job.id),
-                Cell::new(&job.job_type_name),
-                Cell::new(&job.platform),
-                result_cell,
-                Cell::new(job_with_logs.errors.len()),
-            ]);
-        }
-
-        output.push_str(&format!("{}\n\n", table));
+    } else if unknown_count > 0 {
+        output.push_str(&format!(
+            "{} ({} total, {} pending/running)\n\n",
+            "Jobs".cyan().bold(),
+            jobs.len(),
+            unknown_count
+        ));
     } else {
-        output.push_str(&format!("{}\n\n", "✓ No failed jobs found!".green().bold()));
+        output.push_str(&format!(
+            "{} ({})\n\n",
+            "Jobs".cyan().bold(),
+            jobs.len()
+        ));
     }
+
+    // Always show the table when there are jobs
+    let mut table = Table::new();
+    table
+        .load_preset(UTF8_FULL)
+        .set_content_arrangement(ContentArrangement::Dynamic)
+        .set_header(vec![
+            Cell::new("Job ID").add_attribute(Attribute::Bold),
+            Cell::new("Job Type").add_attribute(Attribute::Bold),
+            Cell::new("Platform").add_attribute(Attribute::Bold),
+            Cell::new("Result").add_attribute(Attribute::Bold),
+            Cell::new("Errors").add_attribute(Attribute::Bold),
+        ]);
+
+    for job_with_logs in jobs {
+        let job = &job_with_logs.job;
+        let result_cell = match job.result.as_str() {
+            "success" => Cell::new(&job.result).fg(Color::Green),
+            "testfailed" | "busted" => Cell::new(&job.result).fg(Color::Red),
+            _ => Cell::new(&job.result).fg(Color::Yellow),
+        };
+
+        table.add_row(vec![
+            Cell::new(job.id),
+            Cell::new(&job.job_type_name),
+            Cell::new(&job.platform),
+            result_cell,
+            Cell::new(job_with_logs.errors.len()),
+        ]);
+    }
+
+    output.push_str(&format!("{}\n\n", table));
 
     for job_with_logs in jobs {
         let job = &job_with_logs.job;
