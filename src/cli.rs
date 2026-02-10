@@ -18,7 +18,10 @@ pub enum GroupBy {
     about = "Fetch and summarize Treeherder test results for Firefox developers"
 )]
 pub struct Args {
-    #[arg(help = "Treeherder URL or revision hash (not needed with --use-cache)")]
+    #[arg(
+        help = "Treeherder URL or revision hash (not needed with --use-cache)",
+        conflicts_with = "lando_job_id"
+    )]
     pub input: Option<String>,
     #[arg(long, default_value = "try", help = "Repository name")]
     pub repo: String,
@@ -103,4 +106,10 @@ pub struct Args {
         help = "Number of similar jobs to fetch for --similar-history"
     )]
     pub similar_count: usize,
+    #[arg(
+        long,
+        help = "Use a Lando job ID to fetch the commit hash (alternative to INPUT)",
+        conflicts_with = "input"
+    )]
+    pub lando_job_id: Option<u64>,
 }

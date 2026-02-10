@@ -42,8 +42,12 @@ async fn run() -> Result<()> {
         args.json = true;
     }
 
-    if !args.use_cache && args.input.is_none() && args.similar_history.is_none() {
-        anyhow::bail!("INPUT is required when not using --use-cache or --similar-history");
+    if !args.use_cache
+        && args.input.is_none()
+        && args.similar_history.is_none()
+        && args.lando_job_id.is_none()
+    {
+        anyhow::bail!("INPUT or --lando-job-id is required when not using --use-cache or --similar-history");
     }
 
     if args.notify && !args.watch {
@@ -185,9 +189,47 @@ async fn run() -> Result<()> {
             .unwrap(),
     );
 
+    // If using --lando-job-id with --watch, wait for the job to land first
+    if let Some(lando_job_id) = args.lando_job_id {
+        if args.watch {
+            pb.set_message(format!(
+                "Waiting for Lando job {} to land...",
+                lando_job_id
+            ));
+
+            loop {
+                match fetch_lando_job_status(&client, lando_job_id).await {
+                    Ok(status) if status.status == "LANDED" => {
+                        pb.set_message(format!("Lando job {} has landed!", lando_job_id));
+                        break;
+                    }
+                    Ok(status) => {
+                        pb.set_message(format!(
+                            "Lando job {} status: {}. Checking again in {} seconds...",
+                            lando_job_id, status.status, args.watch_interval
+                        ));
+                    }
+                    Err(e) => {
+                        pb.set_message(format!(
+                            "Error checking Lando job {}: {}. Retrying in {} seconds...",
+                            lando_job_id, e, args.watch_interval
+                        ));
+                    }
+                }
+
+                tokio::time::sleep(tokio::time::Duration::from_secs(args.watch_interval)).await;
+            }
+        }
+    }
+
     pb.set_message("Extracting revision from input");
-    let input = args.input.as_ref().unwrap();
-    let revision = extract_revision(input)?;
+    let revision = if let Some(lando_job_id) = args.lando_job_id {
+        pb.set_message(format!("Fetching commit hash from Lando job {}", lando_job_id));
+        fetch_commit_from_lando_job(&client, lando_job_id).await?
+    } else {
+        let input = args.input.as_ref().unwrap();
+        extract_revision(input)?
+    };
 
     pb.set_message("Fetching push ID");
     let push_id = fetch_push_id(&client, &args.repo, &revision).await?;

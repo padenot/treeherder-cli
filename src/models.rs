@@ -218,6 +218,13 @@ pub struct SimilarJobsMeta {
     pub repository: String,
 }
 
+#[derive(Deserialize, Debug)]
+pub struct LandoJobResponse {
+    pub id: u64,
+    pub status: String,
+    pub commit_id: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct SimilarJobHistory {
     pub job_id: u64,
