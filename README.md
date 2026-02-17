@@ -2,6 +2,8 @@
 
 Fetch and analyze Firefox CI logs from Treeherder.
 
+> **Note:** This tool was previously published as `treeherder-check`. If you're upgrading, please `cargo install treeherder-cli` and update your scripts to use the new name.
+
 ## Installation
 
 ```bash
