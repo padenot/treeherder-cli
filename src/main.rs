@@ -47,7 +47,9 @@ async fn run() -> Result<()> {
         && args.similar_history.is_none()
         && args.lando_job_id.is_none()
     {
-        anyhow::bail!("INPUT or --lando-job-id is required when not using --use-cache or --similar-history");
+        anyhow::bail!(
+            "INPUT or --lando-job-id is required when not using --use-cache or --similar-history"
+        );
     }
 
     if args.notify && !args.watch {
@@ -192,10 +194,7 @@ async fn run() -> Result<()> {
     // If using --lando-job-id with --watch, wait for the job to land first
     if let Some(lando_job_id) = args.lando_job_id {
         if args.watch {
-            pb.set_message(format!(
-                "Waiting for Lando job {} to land...",
-                lando_job_id
-            ));
+            pb.set_message(format!("Waiting for Lando job {} to land...", lando_job_id));
 
             loop {
                 match fetch_lando_job_status(&client, lando_job_id).await {
@@ -224,7 +223,10 @@ async fn run() -> Result<()> {
 
     pb.set_message("Extracting revision from input");
     let revision = if let Some(lando_job_id) = args.lando_job_id {
-        pb.set_message(format!("Fetching commit hash from Lando job {}", lando_job_id));
+        pb.set_message(format!(
+            "Fetching commit hash from Lando job {}",
+            lando_job_id
+        ));
         fetch_commit_from_lando_job(&client, lando_job_id).await?
     } else {
         let input = args.input.as_ref().unwrap();

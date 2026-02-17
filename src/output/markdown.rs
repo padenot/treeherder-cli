@@ -37,15 +37,11 @@ pub fn format_markdown_summary(
     let failed_count = jobs
         .iter()
         .filter(|j| {
-            j.job.state == "completed"
-                && (j.job.result == "testfailed" || j.job.result == "busted")
+            j.job.state == "completed" && (j.job.result == "testfailed" || j.job.result == "busted")
         })
         .count();
 
-    let unknown_count = jobs
-        .iter()
-        .filter(|j| j.job.result == "unknown")
-        .count();
+    let unknown_count = jobs.iter().filter(|j| j.job.result == "unknown").count();
 
     // Show header based on whether there are failures
     if failed_count > 0 {
@@ -62,11 +58,7 @@ pub fn format_markdown_summary(
             unknown_count
         ));
     } else {
-        output.push_str(&format!(
-            "{} ({})\n\n",
-            "Jobs".cyan().bold(),
-            jobs.len()
-        ));
+        output.push_str(&format!("{} ({})\n\n", "Jobs".cyan().bold(), jobs.len()));
     }
 
     // Always show the table when there are jobs
