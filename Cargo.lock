@@ -1280,9 +1280,9 @@ dependencies = [
 
 [[package]]
 name = "moz-cli-version-check"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a1c61eb34ee70e9db977ae03f91278ffde8f99ce7194baadcd235ce3318590da"
+checksum = "a9031439e1ad38d6eaeb5098eccdd4052da0cc1d56f1703c1b7e44eded4eb073"
 dependencies = [
  "dirs",
  "reqwest 0.12.28",
