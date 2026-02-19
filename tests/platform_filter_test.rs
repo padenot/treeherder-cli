@@ -1,11 +1,10 @@
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::cargo_bin;
 use predicates::prelude::*;
 use std::process::Command;
 
 #[test]
 fn test_platform_flag_exists() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--help");
 
     cmd.assert()
@@ -15,7 +14,7 @@ fn test_platform_flag_exists() {
 
 #[test]
 fn test_platform_flag_help_text() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--help");
 
     cmd.assert().success().stdout(predicate::str::contains(
@@ -27,7 +26,7 @@ fn test_platform_flag_help_text() {
 #[ignore] // Ignore by default as it requires network access
 fn test_platform_filter_linux() {
     // Filter to only show linux jobs
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--repo")
         .arg("try")
         .arg("--platform")
@@ -62,7 +61,7 @@ fn test_platform_filter_linux() {
 #[ignore] // Ignore by default as it requires network access
 fn test_platform_filter_windows() {
     // Filter to only show windows jobs
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--repo")
         .arg("try")
         .arg("--platform")
@@ -97,7 +96,7 @@ fn test_platform_filter_windows() {
 #[ignore] // Ignore by default as it requires network access
 fn test_platform_filter_regex() {
     // Test regex pattern (64-bit platforms)
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--repo")
         .arg("try")
         .arg("--platform")
@@ -131,7 +130,7 @@ fn test_platform_filter_regex() {
 #[test]
 fn test_platform_filter_invalid_regex() {
     // Test that invalid regex is reported as an error
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--repo")
         .arg("try")
         .arg("--platform")

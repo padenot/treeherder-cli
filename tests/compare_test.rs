@@ -1,11 +1,10 @@
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::cargo_bin;
 use predicates::prelude::*;
 use std::process::Command;
 
 #[test]
 fn test_compare_flag_exists() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--help");
 
     cmd.assert()
@@ -15,7 +14,7 @@ fn test_compare_flag_exists() {
 
 #[test]
 fn test_compare_flag_help_text() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--help");
 
     cmd.assert().success().stdout(predicate::str::contains(
@@ -25,7 +24,7 @@ fn test_compare_flag_help_text() {
 
 #[test]
 fn test_compare_incompatible_with_use_cache() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--compare")
         .arg("abc123")
         .arg("--use-cache")
@@ -40,7 +39,7 @@ fn test_compare_incompatible_with_use_cache() {
 
 #[test]
 fn test_compare_incompatible_with_watch() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--compare")
         .arg("abc123")
         .arg("--watch")
@@ -55,7 +54,7 @@ fn test_compare_incompatible_with_watch() {
 #[ignore] // Ignore by default as it requires network access
 fn test_compare_json_output_structure() {
     // Compare two revisions and check JSON output structure
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--repo")
         .arg("try")
         .arg("--compare")

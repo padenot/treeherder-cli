@@ -1,11 +1,10 @@
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::cargo_bin;
 use predicates::prelude::*;
 use std::process::Command;
 
 #[test]
 fn test_watch_flag_exists() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--help");
 
     cmd.assert()
@@ -15,7 +14,7 @@ fn test_watch_flag_exists() {
 
 #[test]
 fn test_notify_flag_exists() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--help");
 
     cmd.assert()
@@ -25,7 +24,7 @@ fn test_notify_flag_exists() {
 
 #[test]
 fn test_notify_requires_watch() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--notify")
         .arg("--repo")
         .arg("try")
@@ -38,7 +37,7 @@ fn test_notify_requires_watch() {
 
 #[test]
 fn test_watch_incompatible_with_use_cache() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--watch")
         .arg("--use-cache")
         .arg("--cache-dir")
@@ -54,7 +53,7 @@ fn test_watch_incompatible_with_use_cache() {
 fn test_watch_mode_basic() {
     // This test verifies that watch mode runs (would need a completed push to test properly)
     // Run with: cargo test -- --ignored
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--repo")
         .arg("mozilla-central")
         .arg("--watch")

@@ -1,11 +1,10 @@
 use assert_cmd::assert::OutputAssertExt;
-use assert_cmd::cargo::cargo_bin;
 use predicates::prelude::*;
 use std::process::Command;
 
 #[test]
 fn test_json_flag_exists() {
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--help");
 
     cmd.assert()
@@ -18,7 +17,7 @@ fn test_json_flag_exists() {
 fn test_json_output_structure() {
     // This test verifies that JSON output contains expected fields
     // Run with: cargo test -- --ignored
-    let mut cmd = Command::new(cargo_bin("treeherder-cli"));
+    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
     cmd.arg("--repo")
         .arg("mozilla-central")
         .arg("--json")
