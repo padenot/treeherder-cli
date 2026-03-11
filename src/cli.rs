@@ -15,7 +15,8 @@ pub enum GroupBy {
 #[derive(Parser, Debug)]
 #[command(
     name = "treeherder-cli",
-    about = "Fetch and summarize Treeherder test results for Firefox developers"
+    about = "Fetch and summarize Treeherder test results for Firefox developers",
+    version
 )]
 pub struct Args {
     #[arg(
