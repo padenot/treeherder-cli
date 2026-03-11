@@ -23,8 +23,11 @@ pub struct Args {
         conflicts_with = "lando_job_id"
     )]
     pub input: Option<String>,
-    #[arg(long, default_value = "try", help = "Repository name")]
-    pub repo: String,
+    #[arg(
+        long,
+        help = "Repository name (auto-detected from URL if not specified, defaults to 'try')"
+    )]
+    pub repo: Option<String>,
     #[arg(
         long,
         default_value_t = true,

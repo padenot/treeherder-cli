@@ -64,6 +64,18 @@ pub fn extract_revision(input: &str) -> Result<String> {
     }
 }
 
+pub fn extract_repo_from_url(input: &str) -> Option<String> {
+    if input.starts_with("http") {
+        Url::parse(input).ok().and_then(|url| {
+            url.query_pairs()
+                .find(|(key, _)| key == "repo")
+                .map(|(_, value)| value.to_string())
+        })
+    } else {
+        None
+    }
+}
+
 pub async fn fetch_push_id(client: &Client, repo: &str, revision: &str) -> Result<u64> {
     let url = format!(
         "https://treeherder.mozilla.org/api/project/{}/push/?full=true&count=10&revision={}",

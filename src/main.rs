@@ -78,7 +78,13 @@ async fn run() -> Result<()> {
         );
         pb.set_message(format!("Fetching similar jobs for job {}", job_id));
 
-        let history = fetch_similar_jobs(&client, &args.repo, job_id, args.similar_count).await?;
+        let history = fetch_similar_jobs(
+            &client,
+            args.repo.as_deref().unwrap_or("try"),
+            job_id,
+            args.similar_count,
+        )
+        .await?;
 
         pb.finish_with_message("Similar jobs fetched");
 
@@ -230,17 +236,24 @@ async fn run() -> Result<()> {
         fetch_commit_from_lando_job(&client, lando_job_id).await?
     } else {
         let input = args.input.as_ref().unwrap();
+        if args.repo.is_none() {
+            if let Some(repo_from_url) = extract_repo_from_url(input) {
+                args.repo = Some(repo_from_url);
+            }
+        }
         extract_revision(input)?
     };
 
+    let repo = args.repo.unwrap_or_else(|| "try".to_string());
+
     pb.set_message("Fetching push ID");
-    let push_id = fetch_push_id(&client, &args.repo, &revision).await?;
+    let push_id = fetch_push_id(&client, &repo, &revision).await?;
 
     if let Some(compare_revision_input) = &args.compare {
         pb.set_message("Comparison mode: fetching both revisions");
 
         let compare_revision = extract_revision(compare_revision_input)?;
-        let compare_push_id = fetch_push_id(&client, &args.repo, &compare_revision).await?;
+        let compare_push_id = fetch_push_id(&client, &repo, &compare_revision).await?;
 
         pb.set_message("Fetching jobs for base revision");
         let base_jobs = fetch_jobs(&client, push_id).await?;
@@ -292,7 +305,7 @@ async fn run() -> Result<()> {
         let base_jobs_with_errors: Vec<_> = stream::iter(base_filtered)
             .map(|job| {
                 let client = Arc::clone(&client_arc);
-                let repo = args.repo.clone();
+                let repo = repo.clone();
                 let pb = Arc::clone(&pb_base);
                 async move {
                     let result = fetch_job_details_with_errors(&client, &repo, job).await;
@@ -322,7 +335,7 @@ async fn run() -> Result<()> {
         let compare_jobs_with_errors: Vec<_> = stream::iter(compare_filtered)
             .map(|job| {
                 let client = Arc::clone(&client_arc);
-                let repo = args.repo.clone();
+                let repo = repo.clone();
                 let pb = Arc::clone(&pb_compare);
                 async move {
                     let result = fetch_job_details_with_errors(&client, &repo, job).await;
@@ -502,7 +515,7 @@ async fn run() -> Result<()> {
         let jobs_with_logs: Vec<_> = stream::iter(filtered_jobs.clone())
             .map(|job| {
                 let client = Arc::clone(&client);
-                let repo = args.repo.clone();
+                let repo = repo.clone();
                 let pb_logs = Arc::clone(&pb_logs);
                 let log_path = log_storage_path.clone();
                 let pattern = pattern.as_ref();
@@ -527,7 +540,7 @@ async fn run() -> Result<()> {
             let metadata = CachedPushMetadata {
                 revision: revision.clone(),
                 push_id,
-                repo: args.repo.clone(),
+                repo: repo.clone(),
                 jobs: filtered_jobs.clone(),
             };
             save_cache_metadata(&log_storage_path, &metadata)?;
@@ -611,7 +624,7 @@ async fn run() -> Result<()> {
         let all_downloaded: Vec<_> = stream::iter(filtered_jobs)
             .map(|job| {
                 let client = Arc::clone(&client);
-                let repo = args.repo.clone();
+                let repo = repo.clone();
                 let pb = Arc::clone(&pb_artifacts);
                 let output_dir = artifact_dir.clone();
                 let pattern = artifact_pattern.as_ref();
@@ -664,7 +677,7 @@ async fn run() -> Result<()> {
         let perf_data: Vec<_> = stream::iter(filtered_jobs)
             .map(|job| {
                 let client = Arc::clone(&client);
-                let repo = args.repo.clone();
+                let repo = repo.clone();
                 let pb = Arc::clone(&pb_perf);
 
                 async move {
@@ -704,7 +717,7 @@ async fn run() -> Result<()> {
         let jobs_with_errors: Vec<_> = stream::iter(filtered_jobs)
             .map(|job| {
                 let client = Arc::clone(&client);
-                let repo = args.repo.clone();
+                let repo = repo.clone();
                 let pb_jobs = Arc::clone(&pb_jobs);
 
                 async move {
