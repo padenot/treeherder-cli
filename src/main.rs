@@ -37,6 +37,8 @@ async fn main() -> Result<()> {
 
 async fn run() -> Result<()> {
     let mut args = Args::parse();
+    let match_filter_was_explicit = std::env::args_os()
+        .any(|arg| arg == "--match-filter" || arg.to_string_lossy().starts_with("--match-filter="));
 
     if !args.json && is_running_under_coding_agent() {
         args.json = true;
@@ -438,7 +440,13 @@ async fn run() -> Result<()> {
         }
     }
 
-    let mut filtered_jobs: Vec<_> = match args.match_filter {
+    let effective_match_filter = if args.download_artifacts && !match_filter_was_explicit {
+        MatchFilter::All
+    } else {
+        args.match_filter.clone()
+    };
+
+    let mut filtered_jobs: Vec<_> = match effective_match_filter {
         MatchFilter::Failure => all_jobs
             .into_iter()
             .filter(|job| job.result == "testfailed" || job.result == "busted")
