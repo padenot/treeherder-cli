@@ -283,8 +283,9 @@ pub async fn fetch_error_summary(client: &Client, log_url: &str) -> Result<Vec<E
         let mut errors = Vec::new();
         for line in response.lines() {
             if let Ok(error_line) = serde_json::from_str::<ErrorLine>(line) {
-                if error_line.action == "test_result"
-                    && error_line.status.as_ref().is_some_and(|s| s == "FAIL")
+                if (error_line.action == "test_result"
+                    && error_line.status.as_ref().is_some_and(|s| s == "FAIL"))
+                    || error_line.signature.is_some()
                 {
                     errors.push(error_line);
                 }

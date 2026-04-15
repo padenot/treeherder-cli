@@ -87,6 +87,7 @@ pub struct JobDetailExtended {
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
 pub struct ErrorLine {
+    #[serde(default)]
     pub action: String,
     #[allow(dead_code)]
     pub line: u64,
@@ -100,6 +101,10 @@ pub struct ErrorLine {
     pub message: Option<String>,
     #[serde(default)]
     pub stack: Option<String>,
+    #[serde(default)]
+    pub signature: Option<String>,
+    #[serde(default)]
+    pub stackwalk_stdout: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]

@@ -140,20 +140,25 @@ pub fn format_markdown_summary(
 
             for error in errors {
                 let test = error.test.as_deref().unwrap_or("-");
-                let subtest = error.subtest.as_deref().unwrap_or("-");
-                let status = error.status.as_deref().unwrap_or("-");
-                let message = error
-                    .message
-                    .as_ref()
-                    .map(|m| {
-                        let msg_only = if let Some(pos) = m.find("Stack trace:") {
-                            &m[..pos]
-                        } else {
-                            m
-                        };
-                        msg_only.trim().chars().take(60).collect::<String>()
-                    })
-                    .unwrap_or_else(|| "-".to_string());
+                let (subtest, status, message) = if let Some(sig) = &error.signature {
+                    ("CRASH", "CRASH", sig.chars().take(60).collect::<String>())
+                } else {
+                    let subtest = error.subtest.as_deref().unwrap_or("-");
+                    let status = error.status.as_deref().unwrap_or("-");
+                    let message = error
+                        .message
+                        .as_ref()
+                        .map(|m| {
+                            let msg_only = if let Some(pos) = m.find("Stack trace:") {
+                                &m[..pos]
+                            } else {
+                                m
+                            };
+                            msg_only.trim().chars().take(60).collect::<String>()
+                        })
+                        .unwrap_or_else(|| "-".to_string());
+                    (subtest, status, message)
+                };
 
                 error_table.add_row(vec![
                     Cell::new(test),
@@ -165,8 +170,30 @@ pub fn format_markdown_summary(
 
             output.push_str(&format!("{}\n", error_table));
 
+            for error in errors {
+                if let Some(native_stack) = &error.stackwalk_stdout {
+                    output.push_str(&format!(
+                        "\n  {} ({}) for {}:\n",
+                        "Native crash stack".yellow().bold(),
+                        error.signature.as_deref().unwrap_or("unknown"),
+                        error.test.as_deref().unwrap_or("unknown")
+                    ));
+                    for line in native_stack.lines() {
+                        let trimmed = line.trim();
+                        if !trimmed.is_empty() {
+                            output.push_str(&format!("    {}\n", trimmed.dimmed()));
+                        }
+                    }
+                    output.push('\n');
+                }
+            }
+
             if show_stack_traces {
                 for error in errors {
+                    if error.stackwalk_stdout.is_some() {
+                        continue;
+                    }
+
                     let stack_trace = if let Some(stack) = &error.stack {
                         Some(stack.as_str())
                     } else if let Some(msg) = &error.message {
