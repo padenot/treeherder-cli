@@ -13,31 +13,8 @@ permissions:
   contents: write
 
 jobs:
-  create-release:
-    name: Create Release
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-      version: ${{ steps.get_version.outputs.version }}
-    steps:
-      - name: Get version from tag
-        id: get_version
-        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
-
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Release ${{ github.ref }}
-          draft: false
-          prerelease: false
-
   build-release:
     name: Build Release
-    needs: create-release
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -74,35 +51,21 @@ jobs:
       - name: Package (Unix)
         if: matrix.archive == 'tar.gz'
         run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
           cd target/${{ matrix.target }}/release
-          tar czf treeherder-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz treeherder-cli
-          mv treeherder-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz ${{ github.workspace }}
+          tar czf treeherder-cli-${VERSION}-${{ matrix.target }}.tar.gz treeherder-cli
+          mv treeherder-cli-${VERSION}-${{ matrix.target }}.tar.gz ${{ github.workspace }}
 
       - name: Package (Windows)
         if: matrix.archive == 'zip'
+        shell: pwsh
         run: |
+          $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
           cd target/${{ matrix.target }}/release
-          7z a treeherder-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.zip treeherder-cli.exe
-          mv treeherder-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.zip ${{ github.workspace }}
+          7z a treeherder-cli-${version}-${{ matrix.target }}.zip treeherder-cli.exe
+          mv treeherder-cli-${version}-${{ matrix.target }}.zip ${{ github.workspace }}
 
-      - name: Upload Release Asset (Unix)
-        if: matrix.archive == 'tar.gz'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
         with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./treeherder-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
-          asset_name: treeherder-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.tar.gz
-          asset_content_type: application/gzip
-
-      - name: Upload Release Asset (Windows)
-        if: matrix.archive == 'zip'
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.create-release.outputs.upload_url }}
-          asset_path: ./treeherder-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.zip
-          asset_name: treeherder-cli-${{ needs.create-release.outputs.version }}-${{ matrix.target }}.zip
-          asset_content_type: application/zip
+          files: treeherder-cli-*
