@@ -50,6 +50,45 @@ pub fn extract_lando_commit_id(input: &str) -> Option<u64> {
     }
 }
 
+pub fn extract_lando_instance(input: &str) -> Option<String> {
+    if input.starts_with("http") {
+        Url::parse(input).ok().and_then(|url| {
+            url.query_pairs()
+                .find(|(key, _)| key == "landoInstance")
+                .map(|(_, value)| value.to_string())
+        })
+    } else {
+        None
+    }
+}
+
+fn lando_base_url(instance: &str) -> &'static str {
+    match instance {
+        "lando-dev" => "api.dev.lando.nonprod.cloudops.mozgcp.net",
+        "lando-dev-2025" => "lando-dev.allizom.org",
+        "lando-prod" => "api.lando.services.mozilla.com",
+        _ => "lando.moz.tools",
+    }
+}
+
+pub async fn fetch_revision_from_lando(
+    client: &Client,
+    instance: Option<&str>,
+    commit_id: u64,
+) -> Result<String> {
+    let base_url = lando_base_url(instance.unwrap_or("lando-prod-2025"));
+    let url = format!("https://{}/landing_jobs/{}/", base_url, commit_id);
+
+    #[derive(serde::Deserialize)]
+    struct LandoJob {
+        commit_id: Option<String>,
+    }
+
+    let job: LandoJob = client.get(&url).send().await?.json().await?;
+    job.commit_id
+        .ok_or_else(|| anyhow::anyhow!("No commit_id in Lando response for job {}", commit_id))
+}
+
 pub async fn fetch_push_id(client: &Client, repo: &str, revision: &str) -> Result<u64> {
     let url = format!(
         "https://treeherder.mozilla.org/api/project/{}/push/?full=true&count=10&revision={}",
@@ -63,29 +102,6 @@ pub async fn fetch_push_id(client: &Client, repo: &str, revision: &str) -> Resul
         .first()
         .map(|r| r.id)
         .ok_or_else(|| anyhow::anyhow!("No push found for revision"))
-}
-
-pub async fn fetch_push_ids_by_lando_commit(
-    client: &Client,
-    repo: &str,
-    lando_commit_id: u64,
-) -> Result<Vec<(u64, String)>> {
-    let url = format!(
-        "https://treeherder.mozilla.org/api/project/{}/push/?full=true&count=100&landoCommitID={}",
-        repo, lando_commit_id
-    );
-
-    let response: PushResponse = client.get(&url).send().await?.json().await?;
-
-    if response.results.is_empty() {
-        anyhow::bail!("No push found for landoCommitID {}", lando_commit_id);
-    }
-
-    Ok(response
-        .results
-        .iter()
-        .map(|r| (r.id, r.revision.clone()))
-        .collect())
 }
 
 pub async fn fetch_jobs_multi(client: &Client, push_ids: &[u64]) -> Result<Vec<Job>> {
@@ -573,4 +589,30 @@ fn search_log_file(log_path: &PathBuf, pattern: &Regex, log_name: &str) -> Resul
     }
 
     Ok(matches)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_lando_commit_id_from_url_with_lando_instance() {
+        let url = "https://treeherder.mozilla.org/jobs?repo=try&landoInstance=lando-prod-2025&landoCommitID=42199";
+        assert_eq!(extract_lando_commit_id(url), Some(42199));
+    }
+
+    #[test]
+    fn test_extract_repo_from_lando_url() {
+        let url = "https://treeherder.mozilla.org/jobs?repo=try&landoInstance=lando-prod-2025&landoCommitID=42199";
+        assert_eq!(extract_repo_from_url(url), Some("try".to_string()));
+    }
+
+    #[test]
+    fn test_extract_lando_instance() {
+        let url = "https://treeherder.mozilla.org/jobs?repo=try&landoInstance=lando-prod-2025&landoCommitID=42199";
+        assert_eq!(
+            extract_lando_instance(url),
+            Some("lando-prod-2025".to_string())
+        );
+    }
 }

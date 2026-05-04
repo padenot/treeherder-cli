@@ -10,7 +10,6 @@ pub struct PushResponse {
 #[derive(Deserialize, Debug)]
 pub struct PushResult {
     pub id: u64,
-    pub revision: String,
 }
 
 #[derive(Deserialize, Debug)]

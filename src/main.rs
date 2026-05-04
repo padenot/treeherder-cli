@@ -245,10 +245,11 @@ async fn run() -> Result<()> {
     let repo = args.repo.unwrap_or_else(|| "try".to_string());
 
     let (revision, push_ids) = if let Some(lando_commit_id) = extract_lando_commit_id(input) {
-        let pushes = fetch_push_ids_by_lando_commit(&client, &repo, lando_commit_id).await?;
-        let revision = pushes[0].1.clone();
-        let ids: Vec<u64> = pushes.into_iter().map(|(id, _)| id).collect();
-        (revision, ids)
+        let lando_instance = extract_lando_instance(input);
+        let revision =
+            fetch_revision_from_lando(&client, lando_instance.as_deref(), lando_commit_id).await?;
+        let push_id = fetch_push_id(&client, &repo, &revision).await?;
+        (revision, vec![push_id])
     } else {
         let revision = extract_revision(input)?;
         let push_id = fetch_push_id(&client, &repo, &revision).await?;
