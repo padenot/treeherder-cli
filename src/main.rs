@@ -24,11 +24,49 @@ use std::sync::Arc;
 use tempfile::TempDir;
 use util::*;
 
+fn is_llm_environment() -> bool {
+    std::env::var("CLAUDECODE").is_ok()
+        || std::env::var("CODEX_SANDBOX").is_ok()
+        || std::env::var("GEMINI_CLI").is_ok()
+        || std::env::var("OPENCODE").is_ok()
+}
+
+fn print_llm_help() {
+    print!(
+        r#"treeherder-cli: Firefox CI results from Treeherder
+INPUT: revision hash|Treeherder URL|Lando commit ID (numeric or URL with ?landoCommitID=N)
+--repo <R> try(default)|autoland|mozilla-central|...
+--json output JSON|--watch poll until complete|--stream-failures print failures as they appear
+--notify desktop notification on completion (requires --watch or --stream-failures)
+--watch-interval <N> poll interval seconds (default 300)
+--filter <regex> filter by job name|--platform <regex> filter by platform
+--include-intermittent include intermittent failures
+--group-by test group failures by test name across platforms
+--compare <REV> show only failures not in REV
+--show-stack-traces show crash stack traces|--all-crash-threads all threads|--full-stack registers+annotations
+--fetch-logs download full logs|--pattern <regex> search logs|--match-filter failure|success|all
+--cache-dir <DIR> store logs|--use-cache read from cache (no download)
+--download-artifacts download job artifacts|--artifact-pattern <regex>
+--perf show performance/resource data
+--similar-history <job-id> job history via similar_jobs API|--similar-count <N> (default 50)
+--duration-min <N> only jobs longer than N seconds
+Ex: treeherder-cli a13b9fc22101|treeherder-cli 12345 --stream-failures|treeherder-cli a13b9fc22101 --json
+Ex: treeherder-cli a13b9fc22101 --filter mochitest --platform linux|treeherder-cli a13b9fc22101 --compare b2c3d4e5
+"#
+    );
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let version_checker =
         moz_cli_version_check::VersionChecker::new("treeherder-cli", env!("CARGO_PKG_VERSION"));
     version_checker.check_async();
+
+    if is_llm_environment() && std::env::args().any(|arg| arg == "--help" || arg == "-h") {
+        print_llm_help();
+        version_checker.print_warning();
+        return Ok(());
+    }
 
     let result = run().await;
 
