@@ -7,60 +7,67 @@ Fetch and analyze Firefox CI logs from Treeherder.
 ## Installation
 
 ```bash
-cargo install --path .
+cargo install treeherder-cli
 ```
 
 ## Examples
 
 ```bash
-# Basic: get failed jobs as JSON
+# Basic: get failed jobs as markdown
+treeherder-cli a13b9fc22101
+
+# Use a Treeherder URL or a Lando commit ID instead of a revision hash
+treeherder-cli "https://treeherder.mozilla.org/jobs?repo=try&revision=a13b9fc22101"
+treeherder-cli 12345   # bare Lando commit ID
+treeherder-cli "https://treeherder.mozilla.org/jobs?repo=try&landoCommitID=12345"
+
+# Output as JSON
 treeherder-cli a13b9fc22101 --json
 
-# Use a Lando job ID instead of commit hash
-treeherder-cli --lando-job-id 12345 --json
-
-# Watch a Lando job until it lands, then monitor Treeherder jobs
-treeherder-cli --lando-job-id 12345 --watch --notify
-
 # Filter by job name or platform
-treeherder-cli a13b9fc22101 --filter "mochitest" --json
-treeherder-cli a13b9fc22101 --platform "linux.*64" --json
+treeherder-cli a13b9fc22101 --filter "mochitest"
+treeherder-cli a13b9fc22101 --platform "linux.*64"
 
 # Group failures by test name (cross-platform view)
-treeherder-cli a13b9fc22101 --group-by test --json
+treeherder-cli a13b9fc22101 --group-by test
 
 # Compare revisions to find regressions
-treeherder-cli a13b9fc22101 --compare b2c3d4e5f678 --json
+treeherder-cli a13b9fc22101 --compare b2c3d4e5f678
 
 # Check test history for intermittent detection
-treeherder-cli --history "test_audio_playback" --history-count 10 --repo try --json
+treeherder-cli --similar-history 543981186 --similar-count 100 --repo autoland
 
 # Include intermittent failures
-treeherder-cli a13b9fc22101 --include-intermittent --json
+treeherder-cli a13b9fc22101 --include-intermittent
 
 # Filter long-running jobs (>1 hour)
-treeherder-cli a13b9fc22101 --duration-min 3600 --json
+treeherder-cli a13b9fc22101 --duration-min 3600
 
 # Fetch logs with pattern matching
-treeherder-cli a13b9fc22101 --fetch-logs --pattern "ASSERTION|CRASH" --json
+treeherder-cli a13b9fc22101 --fetch-logs --pattern "ASSERTION|CRASH"
 
 # Download artifacts
 treeherder-cli a13b9fc22101 --download-artifacts --artifact-pattern "screenshot|errorsummary"
 
 # Get performance/resource data
-treeherder-cli a13b9fc22101 --perf --json
+treeherder-cli a13b9fc22101 --perf
 
-# Watch mode with notification (default: poll every 5min)
+# Watch mode: poll until all jobs complete, then notify
 treeherder-cli a13b9fc22101 --watch --notify
 treeherder-cli a13b9fc22101 --watch --watch-interval 60  # poll every minute
 
+# Stream failures as they appear (no need to wait for all jobs)
+treeherder-cli a13b9fc22101 --stream-failures
+
+# Show native crash stack details
+treeherder-cli a13b9fc22101 --show-stack-traces
+treeherder-cli a13b9fc22101 --show-stack-traces --all-crash-threads
+treeherder-cli a13b9fc22101 --show-stack-traces --full-stack
+
 # Cache logs for repeated queries
 treeherder-cli a13b9fc22101 --fetch-logs --cache-dir ./logs
-treeherder-cli --use-cache --cache-dir ./logs --pattern "ERROR" --json
+treeherder-cli --use-cache --cache-dir ./logs --pattern "ERROR"
 
 # Switch repository
-treeherder-cli a13b9fc22101 --repo autoland --json
-
-# Efficient job history via similar_jobs API
-treeherder-cli --similar-history 543981186 --similar-count 100 --repo autoland --json
+treeherder-cli a13b9fc22101 --repo autoland
 ```
