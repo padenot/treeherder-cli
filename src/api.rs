@@ -7,46 +7,6 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use url::Url;
 
-pub async fn fetch_lando_job_status(client: &Client, job_id: u64) -> Result<LandoJobResponse> {
-    let url = format!(
-        "https://api.lando.services.mozilla.com/landing_jobs/{}",
-        job_id
-    );
-
-    let response: LandoJobResponse = client.get(&url).send().await?.json().await?;
-
-    if response.id != job_id {
-        anyhow::bail!(
-            "Lando API returned unexpected job ID: expected {}, got {}",
-            job_id,
-            response.id
-        );
-    }
-
-    Ok(response)
-}
-
-pub async fn fetch_commit_from_lando_job(client: &Client, job_id: u64) -> Result<String> {
-    let response = fetch_lando_job_status(client, job_id).await?;
-
-    if response.status != "LANDED" {
-        anyhow::bail!(
-            "Lando job {} has not landed yet (status: {}). Only LANDED jobs have commit IDs.",
-            job_id,
-            response.status
-        );
-    }
-
-    if let Some(commit_id) = response.commit_id {
-        Ok(commit_id)
-    } else {
-        anyhow::bail!(
-            "Lando job {} is marked as LANDED but has no commit_id",
-            job_id
-        )
-    }
-}
-
 pub fn extract_revision(input: &str) -> Result<String> {
     if input.starts_with("http") {
         let url = Url::parse(input)?;
@@ -76,6 +36,20 @@ pub fn extract_repo_from_url(input: &str) -> Option<String> {
     }
 }
 
+pub fn extract_lando_commit_id(input: &str) -> Option<u64> {
+    if input.starts_with("http") {
+        Url::parse(input).ok().and_then(|url| {
+            url.query_pairs()
+                .find(|(key, _)| key == "landoCommitID")
+                .and_then(|(_, value)| value.parse().ok())
+        })
+    } else if input.chars().all(|c| c.is_ascii_digit()) {
+        input.parse().ok()
+    } else {
+        None
+    }
+}
+
 pub async fn fetch_push_id(client: &Client, repo: &str, revision: &str) -> Result<u64> {
     let url = format!(
         "https://treeherder.mozilla.org/api/project/{}/push/?full=true&count=10&revision={}",
@@ -89,6 +63,39 @@ pub async fn fetch_push_id(client: &Client, repo: &str, revision: &str) -> Resul
         .first()
         .map(|r| r.id)
         .ok_or_else(|| anyhow::anyhow!("No push found for revision"))
+}
+
+pub async fn fetch_push_ids_by_lando_commit(
+    client: &Client,
+    repo: &str,
+    lando_commit_id: u64,
+) -> Result<Vec<(u64, String)>> {
+    let url = format!(
+        "https://treeherder.mozilla.org/api/project/{}/push/?full=true&count=100&landoCommitID={}",
+        repo, lando_commit_id
+    );
+
+    let response: PushResponse = client.get(&url).send().await?.json().await?;
+
+    if response.results.is_empty() {
+        anyhow::bail!("No push found for landoCommitID {}", lando_commit_id);
+    }
+
+    Ok(response
+        .results
+        .iter()
+        .map(|r| (r.id, r.revision.clone()))
+        .collect())
+}
+
+pub async fn fetch_jobs_multi(client: &Client, push_ids: &[u64]) -> Result<Vec<Job>> {
+    let futures: Vec<_> = push_ids.iter().map(|&id| fetch_jobs(client, id)).collect();
+    let results = futures::future::join_all(futures).await;
+    let mut all = Vec::new();
+    for result in results {
+        all.extend(result?);
+    }
+    Ok(all)
 }
 
 pub async fn fetch_jobs(client: &Client, push_id: u64) -> Result<Vec<Job>> {
@@ -297,12 +304,62 @@ pub async fn fetch_error_summary(client: &Client, log_url: &str) -> Result<Vec<E
     }
 }
 
+fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
+    let mut seen = std::collections::HashSet::new();
+    let mut errors = Vec::new();
+    for line in text.lines() {
+        if let Some(idx) = line.find("TEST-UNEXPECTED-FAIL | ") {
+            let rest = &line[idx + "TEST-UNEXPECTED-FAIL | ".len()..];
+            let parts: Vec<&str> = rest.splitn(3, " | ").collect();
+            if !parts.is_empty() {
+                let test_name = parts[0].trim().to_string();
+                let message = parts.get(1).map(|s| s.trim().to_string());
+                if seen.insert(test_name.clone()) {
+                    errors.push(ErrorLine {
+                        action: "test_result".to_string(),
+                        line: 0,
+                        test: Some(test_name),
+                        subtest: None,
+                        status: Some("FAIL".to_string()),
+                        message,
+                        stack: None,
+                        signature: None,
+                        stackwalk_stdout: None,
+                    });
+                }
+            }
+        } else if line.contains("ERROR - ") && line.contains("timed out") {
+            if let Some(idx) = line.find("ERROR - ") {
+                let msg = line[idx + "ERROR - ".len()..].trim().to_string();
+                errors.push(ErrorLine {
+                    action: "timeout".to_string(),
+                    line: 0,
+                    test: None,
+                    subtest: None,
+                    status: Some("TIMEOUT".to_string()),
+                    message: Some(msg),
+                    stack: None,
+                    signature: None,
+                    stackwalk_stdout: None,
+                });
+                break;
+            }
+        }
+    }
+    errors
+}
+
 pub async fn fetch_job_details_with_errors(
     client: &Client,
     repo: &str,
     job: Job,
 ) -> Result<(Job, Vec<ErrorLine>)> {
     let job_detail = fetch_job_details(client, repo, job.id).await?;
+
+    let has_errorsummary = job_detail
+        .logs
+        .iter()
+        .any(|l| l.url.contains("errorsummary"));
 
     let error_futures: Vec<_> = job_detail
         .logs
@@ -318,6 +375,18 @@ pub async fn fetch_job_details_with_errors(
         match result {
             Ok(errors) => all_errors.extend(errors),
             Err(e) => eprintln!("Failed to fetch error summary: {}", e),
+        }
+    }
+
+    if all_errors.is_empty() && !has_errorsummary {
+        if let Some(live_log) = job_detail
+            .logs
+            .iter()
+            .find(|l| l.name == "live_backing_log")
+        {
+            if let Ok(text) = client.get(&live_log.url).send().await?.text().await {
+                all_errors = parse_live_log_failures(&text);
+            }
         }
     }
 

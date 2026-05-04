@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::cmp::Reverse;
 use std::collections::HashMap;
 
 #[derive(Deserialize, Debug)]
@@ -9,7 +10,6 @@ pub struct PushResponse {
 #[derive(Deserialize, Debug)]
 pub struct PushResult {
     pub id: u64,
-    #[allow(dead_code)]
     pub revision: String,
 }
 
@@ -224,13 +224,6 @@ pub struct SimilarJobsMeta {
     pub repository: String,
 }
 
-#[derive(Deserialize, Debug)]
-pub struct LandoJobResponse {
-    pub id: u64,
-    pub status: String,
-    pub commit_id: Option<String>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub struct SimilarJobHistory {
     pub job_id: u64,
@@ -278,7 +271,7 @@ pub fn group_failures_by_test(jobs: &[JobWithLogs]) -> Vec<GroupedTestFailure> {
         })
         .collect();
 
-    grouped.sort_by(|a, b| b.platforms.len().cmp(&a.platforms.len()));
+    grouped.sort_by_key(|b| Reverse(b.platforms.len()));
     grouped
 }
 

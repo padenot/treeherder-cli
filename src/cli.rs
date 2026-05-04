@@ -20,8 +20,7 @@ pub enum GroupBy {
 )]
 pub struct Args {
     #[arg(
-        help = "Treeherder URL or revision hash (not needed with --use-cache)",
-        conflicts_with = "lando_job_id"
+        help = "Treeherder URL, revision hash, or Lando commit ID (not needed with --use-cache)"
     )]
     pub input: Option<String>,
     #[arg(
@@ -112,8 +111,17 @@ pub struct Args {
     pub similar_count: usize,
     #[arg(
         long,
-        help = "Use a Lando job ID to fetch the commit hash (alternative to INPUT)",
-        conflicts_with = "input"
+        help = "Stream failures to stdout as they appear, without waiting for all jobs to complete (implies --watch)"
     )]
-    pub lando_job_id: Option<u64>,
+    pub stream_failures: bool,
+    #[arg(
+        long,
+        help = "Show all threads in native crash stacks instead of only the crashed thread"
+    )]
+    pub all_crash_threads: bool,
+    #[arg(
+        long,
+        help = "Show full crash stack details including registers and 'Found by' annotations"
+    )]
+    pub full_stack: bool,
 }

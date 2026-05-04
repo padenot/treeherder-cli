@@ -1,12 +1,98 @@
 use crate::models::*;
 use colored::Colorize;
-use comfy_table::{presets::UTF8_FULL, Attribute, Cell, Color, ContentArrangement, Table};
+
+fn strip_source_hash(s: &str) -> String {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::with_capacity(s.len());
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i] == ':' && i + 40 < chars.len() {
+            let hex: String = chars[i + 1..i + 41].iter().collect();
+            if hex.chars().all(|c| c.is_ascii_hexdigit()) {
+                let rest: String = chars[i + 41..].iter().collect();
+                if let Some(rest) = rest.strip_prefix(" : ") {
+                    out.push(':');
+                    let linenum: String = rest[..]
+                        .chars()
+                        .take_while(|c| c.is_ascii_digit())
+                        .collect();
+                    out.push_str(&linenum);
+                    i += 1 + 40 + 3 + linenum.len();
+                    continue;
+                }
+            }
+        }
+        out.push(chars[i]);
+        i += 1;
+    }
+    out
+}
+
+fn is_register_line(line: &str) -> bool {
+    let t = line.trim();
+    // Register lines look like "rax = 0x...   rdx = 0x..."
+    let parts: Vec<&str> = t.splitn(3, ' ').collect();
+    parts.len() >= 3 && parts[1] == "=" && parts[2].starts_with("0x")
+}
+
+fn extract_crashed_thread(stackwalk: &str) -> String {
+    let mut header_lines: Vec<&str> = Vec::new();
+    let mut crashed_thread_lines: Vec<&str> = Vec::new();
+    let mut in_crashed_thread = false;
+
+    for line in stackwalk.lines() {
+        if line.starts_with("Thread ") {
+            if line.contains("(crashed)") {
+                in_crashed_thread = true;
+                crashed_thread_lines.push(line);
+            } else if in_crashed_thread {
+                break;
+            } else {
+                in_crashed_thread = false;
+            }
+        } else if crashed_thread_lines.is_empty() && !in_crashed_thread {
+            if line.starts_with("Crash reason:")
+                || line.starts_with("Crash address:")
+                || line.starts_with("Process uptime:")
+            {
+                header_lines.push(line);
+            }
+        } else if in_crashed_thread {
+            crashed_thread_lines.push(line);
+        }
+    }
+
+    let mut result = header_lines.join("\n");
+    if !result.is_empty() && !crashed_thread_lines.is_empty() {
+        result.push('\n');
+    }
+    result.push_str(&crashed_thread_lines.join("\n"));
+    result
+}
+
+fn format_stack(stack_text: &str, full_stack: bool) -> String {
+    let mut out = String::new();
+    for line in stack_text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if !full_stack && (trimmed.starts_with("Found by:") || is_register_line(trimmed)) {
+            continue;
+        }
+        let cleaned = strip_source_hash(trimmed);
+        out.push_str(&format!("    {}\n", cleaned.dimmed()));
+    }
+    out
+}
 
 pub fn format_markdown_summary(
     revision: &str,
     push_id: u64,
     jobs: &[JobWithLogs],
     show_stack_traces: bool,
+    all_crash_threads: bool,
+    full_stack: bool,
     fetch_logs: bool,
 ) -> String {
     let mut output = String::new();
@@ -29,7 +115,7 @@ pub fn format_markdown_summary(
     if jobs.is_empty() {
         output.push_str(&format!(
             "{}\n",
-            "✓ No jobs found matching criteria!".green().bold()
+            "No jobs found matching criteria.".dimmed()
         ));
         return output;
     }
@@ -40,14 +126,12 @@ pub fn format_markdown_summary(
             j.job.state == "completed" && (j.job.result == "testfailed" || j.job.result == "busted")
         })
         .count();
-
     let unknown_count = jobs.iter().filter(|j| j.job.result == "unknown").count();
 
-    // Show header based on whether there are failures
     if failed_count > 0 {
         output.push_str(&format!(
             "{} ({} failures)\n\n",
-            "Failed Jobs".red().bold(),
+            "FAILED".red().bold(),
             failed_count
         ));
     } else if unknown_count > 0 {
@@ -61,139 +145,112 @@ pub fn format_markdown_summary(
         output.push_str(&format!("{} ({})\n\n", "Jobs".cyan().bold(), jobs.len()));
     }
 
-    // Always show the table when there are jobs
-    let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(vec![
-            Cell::new("Job ID").add_attribute(Attribute::Bold),
-            Cell::new("Job Type").add_attribute(Attribute::Bold),
-            Cell::new("Platform").add_attribute(Attribute::Bold),
-            Cell::new("Result").add_attribute(Attribute::Bold),
-            Cell::new("Errors").add_attribute(Attribute::Bold),
-        ]);
-
+    // Job list
     for job_with_logs in jobs {
         let job = &job_with_logs.job;
-        let result_cell = match job.result.as_str() {
-            "success" => Cell::new(&job.result).fg(Color::Green),
-            "testfailed" | "busted" => Cell::new(&job.result).fg(Color::Red),
-            _ => Cell::new(&job.result).fg(Color::Yellow),
+        let result_str = match job.result.as_str() {
+            "success" => format!("[{}]", job.result).green().to_string(),
+            "testfailed" | "busted" => format!("[{}]", job.result).red().to_string(),
+            _ => format!("[{}]", job.result).yellow().to_string(),
         };
-
-        table.add_row(vec![
-            Cell::new(job.id),
-            Cell::new(&job.job_type_name),
-            Cell::new(&job.platform),
-            result_cell,
-            Cell::new(job_with_logs.errors.len()),
-        ]);
+        let errors = job_with_logs.errors.len();
+        let err_str = if errors > 0 {
+            format!(" — {} error{}", errors, if errors == 1 { "" } else { "s" })
+        } else {
+            String::new()
+        };
+        output.push_str(&format!(
+            "  {} {} ({}){}\n",
+            result_str,
+            job.job_type_name,
+            job.platform.dimmed(),
+            err_str.dimmed()
+        ));
     }
+    output.push('\n');
 
-    output.push_str(&format!("{}\n\n", table));
-
+    // Job details
     for job_with_logs in jobs {
         let job = &job_with_logs.job;
         let errors = &job_with_logs.errors;
         let log_matches = &job_with_logs.log_matches;
 
         let result_colored = match job.result.as_str() {
-            "success" => job.result.green(),
-            "testfailed" | "busted" => job.result.red(),
-            _ => job.result.yellow(),
+            "success" => job.result.green().to_string(),
+            "testfailed" | "busted" => job.result.red().to_string(),
+            _ => job.result.yellow().to_string(),
         };
 
         output.push_str(&format!(
-            "{} {} - {}\n",
-            "▶".cyan(),
+            "{} ({}, {}):\n",
             job.job_type_name.bold(),
-            job.platform.dimmed()
-        ));
-        output.push_str(&format!(
-            "  {} {} | {} {} | {} {}\n",
-            "ID:".dimmed(),
-            job.id.to_string().cyan(),
-            "Symbol:".dimmed(),
-            job.job_type_symbol.cyan(),
-            "Result:".dimmed(),
+            job.platform.dimmed(),
             result_colored
         ));
 
         if let Some(log_dir) = &job_with_logs.log_dir {
-            output.push_str(&format!("  {} {}\n", "Logs:".dimmed(), log_dir.blue()));
+            output.push_str(&format!("  logs: {}\n", log_dir.blue()));
         }
 
         if !errors.is_empty() {
-            output.push_str(&format!("\n  {}:\n", "Errors".red().bold()));
-
-            let mut error_table = Table::new();
-            error_table
-                .load_preset(UTF8_FULL)
-                .set_content_arrangement(ContentArrangement::Dynamic)
-                .set_header(vec![
-                    Cell::new("Test").add_attribute(Attribute::Bold),
-                    Cell::new("Subtest").add_attribute(Attribute::Bold),
-                    Cell::new("Status").add_attribute(Attribute::Bold),
-                    Cell::new("Message").add_attribute(Attribute::Bold),
-                ]);
-
             for error in errors {
-                let test = error.test.as_deref().unwrap_or("-");
-                let (subtest, status, message) = if let Some(sig) = &error.signature {
-                    ("CRASH", "CRASH", sig.chars().take(60).collect::<String>())
+                if let Some(sig) = &error.signature {
+                    output.push_str(&format!(
+                        "  {} {}\n",
+                        "CRASH".red().bold(),
+                        sig.chars().take(80).collect::<String>()
+                    ));
                 } else {
-                    let subtest = error.subtest.as_deref().unwrap_or("-");
-                    let status = error.status.as_deref().unwrap_or("-");
-                    let message = error
-                        .message
-                        .as_ref()
-                        .map(|m| {
-                            let msg_only = if let Some(pos) = m.find("Stack trace:") {
-                                &m[..pos]
-                            } else {
-                                m
-                            };
-                            msg_only.trim().chars().take(60).collect::<String>()
-                        })
-                        .unwrap_or_else(|| "-".to_string());
-                    (subtest, status, message)
-                };
-
-                error_table.add_row(vec![
-                    Cell::new(test),
-                    Cell::new(subtest),
-                    Cell::new(status).fg(Color::Red),
-                    Cell::new(message),
-                ]);
+                    let status = error.status.as_deref().unwrap_or("FAIL");
+                    let test = error.test.as_deref().unwrap_or("(unknown test)");
+                    let msg = error.message.as_ref().map(|m| {
+                        let m = if let Some(pos) = m.find("Stack trace:") {
+                            &m[..pos]
+                        } else {
+                            m
+                        };
+                        m.trim().to_string()
+                    });
+                    if let Some(msg) = msg {
+                        output.push_str(&format!(
+                            "  {}  {} — {}\n",
+                            status.red(),
+                            test,
+                            msg.dimmed()
+                        ));
+                    } else {
+                        output.push_str(&format!("  {}  {}\n", status.red(), test));
+                    }
+                }
             }
 
-            output.push_str(&format!("{}\n", error_table));
-
+            // Native crash stacks
             for error in errors {
                 if let Some(native_stack) = &error.stackwalk_stdout {
+                    let extracted;
+                    let stack_text = if all_crash_threads {
+                        native_stack.as_str()
+                    } else {
+                        extracted = extract_crashed_thread(native_stack);
+                        extracted.as_str()
+                    };
                     output.push_str(&format!(
                         "\n  {} ({}) for {}:\n",
                         "Native crash stack".yellow().bold(),
                         error.signature.as_deref().unwrap_or("unknown"),
                         error.test.as_deref().unwrap_or("unknown")
                     ));
-                    for line in native_stack.lines() {
-                        let trimmed = line.trim();
-                        if !trimmed.is_empty() {
-                            output.push_str(&format!("    {}\n", trimmed.dimmed()));
-                        }
-                    }
+                    output.push_str(&format_stack(stack_text, full_stack));
                     output.push('\n');
                 }
             }
 
+            // JS/Python stack traces
             if show_stack_traces {
                 for error in errors {
                     if error.stackwalk_stdout.is_some() {
                         continue;
                     }
-
                     let stack_trace = if let Some(stack) = &error.stack {
                         Some(stack.as_str())
                     } else if let Some(msg) = &error.message {
@@ -202,25 +259,19 @@ pub fn format_markdown_summary(
                     } else {
                         None
                     };
-
                     if let Some(stack) = stack_trace {
                         output.push_str(&format!(
                             "\n  {} for {}:\n",
                             "Stack trace".yellow().bold(),
                             error.test.as_deref().unwrap_or("unknown")
                         ));
-                        for line in stack.lines() {
-                            let trimmed = line.trim();
-                            if !trimmed.is_empty() {
-                                output.push_str(&format!("    {}\n", trimmed.dimmed()));
-                            }
-                        }
+                        output.push_str(&format_stack(stack, full_stack));
                         output.push('\n');
                     }
                 }
             }
         } else if !fetch_logs {
-            output.push_str(&format!("  {}\n", "No error summary available".dimmed()));
+            output.push_str(&format!("  {}\n", "no error summary available".dimmed()));
         }
 
         if fetch_logs && !log_matches.is_empty() {
@@ -229,8 +280,7 @@ pub fn format_markdown_summary(
                 "Pattern Matches".yellow().bold(),
                 log_matches.len()
             ));
-            let max_matches_to_show = 10;
-            for log_match in log_matches.iter().take(max_matches_to_show) {
+            for log_match in log_matches.iter().take(10) {
                 output.push_str(&format!(
                     "    {}:{} {}\n",
                     log_match.log_name.cyan(),
@@ -243,10 +293,10 @@ pub fn format_markdown_summary(
                         .dimmed()
                 ));
             }
-            if log_matches.len() > max_matches_to_show {
+            if log_matches.len() > 10 {
                 output.push_str(&format!(
-                    "    {} more matches (see log files)\n",
-                    format!("... and {}", log_matches.len() - max_matches_to_show).dimmed()
+                    "    {}\n",
+                    format!("... and {} more matches", log_matches.len() - 10).dimmed()
                 ));
             }
         }
@@ -266,7 +316,7 @@ pub fn format_grouped_markdown_summary(
 
     output.push_str(&format!(
         "{}\n\n",
-        "Treeherder Test Results - Grouped by Test"
+        "Treeherder Test Results — Grouped by Test"
             .bold()
             .underline()
     ));
@@ -282,7 +332,7 @@ pub fn format_grouped_markdown_summary(
     ));
 
     if grouped.is_empty() {
-        output.push_str(&format!("{}\n", "✓ No test failures found!".green().bold()));
+        output.push_str(&format!("{}\n", "No test failures found.".green().bold()));
         return output;
     }
 
@@ -293,42 +343,32 @@ pub fn format_grouped_markdown_summary(
     ));
 
     for failure in grouped {
-        output.push_str(&format!("{} {}\n", "▶".cyan(), failure.test_name.bold()));
         output.push_str(&format!(
-            "  {} {} platforms: {}\n\n",
-            "Affected on".dimmed(),
-            failure.platforms.len().to_string().yellow(),
+            "  {} — {} platform{}: {}\n",
+            failure.test_name.bold(),
+            failure.platforms.len(),
+            if failure.platforms.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
             failure.platforms.join(", ").cyan()
         ));
-
-        let mut table = Table::new();
-        table
-            .load_preset(UTF8_FULL)
-            .set_content_arrangement(ContentArrangement::Dynamic)
-            .set_header(vec![
-                Cell::new("Platform").add_attribute(Attribute::Bold),
-                Cell::new("Job").add_attribute(Attribute::Bold),
-                Cell::new("Subtest").add_attribute(Attribute::Bold),
-                Cell::new("Message").add_attribute(Attribute::Bold),
-            ]);
-
         for job in &failure.jobs {
-            let subtest = job.subtest.as_deref().unwrap_or("-");
-            let message = job
-                .message
-                .as_ref()
-                .map(|m| m.chars().take(50).collect::<String>())
-                .unwrap_or_else(|| "-".to_string());
-
-            table.add_row(vec![
-                Cell::new(&job.platform),
-                Cell::new(&job.job_type_name),
-                Cell::new(subtest),
-                Cell::new(message),
-            ]);
+            let detail = match (&job.subtest, &job.message) {
+                (Some(s), Some(m)) => format!(" ({s}): {m}"),
+                (Some(s), None) => format!(" ({s})"),
+                (None, Some(m)) => format!(": {m}"),
+                (None, None) => String::new(),
+            };
+            output.push_str(&format!(
+                "    {} {}{}\n",
+                job.job_type_name.dimmed(),
+                job.platform.dimmed(),
+                detail.dimmed()
+            ));
         }
-
-        output.push_str(&format!("{}\n\n", table));
+        output.push('\n');
     }
 
     output
@@ -343,7 +383,7 @@ pub fn format_comparison_markdown(result: &ComparisonResult) -> String {
     ));
     output.push_str(&format!(
         "{} {}\n",
-        "Base revision:".cyan().bold(),
+        "Base:".cyan().bold(),
         result.base_revision.yellow()
     ));
     output.push_str(&format!(
@@ -352,39 +392,18 @@ pub fn format_comparison_markdown(result: &ComparisonResult) -> String {
         result.compare_revision.yellow()
     ));
 
-    let mut summary_table = Table::new();
-    summary_table
-        .load_preset(UTF8_FULL)
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(vec![
-            Cell::new("Category").add_attribute(Attribute::Bold),
-            Cell::new("Count").add_attribute(Attribute::Bold),
-        ]);
-
-    summary_table.add_row(vec![
-        Cell::new("New Failures").fg(Color::Red),
-        Cell::new(result.new_failures.len()).fg(if result.new_failures.is_empty() {
-            Color::Green
-        } else {
-            Color::Red
-        }),
-    ]);
-    summary_table.add_row(vec![
-        Cell::new("Fixed").fg(Color::Green),
-        Cell::new(result.fixed_failures.len()).fg(Color::Green),
-    ]);
-    summary_table.add_row(vec![
-        Cell::new("Still Failing").fg(Color::Yellow),
-        Cell::new(result.still_failing.len()).fg(Color::Yellow),
-    ]);
-
-    output.push_str(&format!("{}\n\n", summary_table));
+    output.push_str(&format!(
+        "  new failures:   {}\n  fixed:          {}\n  still failing:  {}\n\n",
+        result.new_failures.len().to_string().red(),
+        result.fixed_failures.len().to_string().green(),
+        result.still_failing.len().to_string().yellow()
+    ));
 
     if result.new_failures.is_empty() {
         output.push_str(&format!(
             "{} {}\n\n",
             "New Failures:".red().bold(),
-            "✓ None!".green()
+            "none".green()
         ));
     } else {
         output.push_str(&format!(
@@ -392,62 +411,30 @@ pub fn format_comparison_markdown(result: &ComparisonResult) -> String {
             "New Failures".red().bold(),
             result.new_failures.len()
         ));
-        output.push_str(&format!(
-            "{}\n\n",
-            "These tests are now failing but passed in the comparison revision:".dimmed()
-        ));
-
-        let mut table = Table::new();
-        table
-            .load_preset(UTF8_FULL)
-            .set_content_arrangement(ContentArrangement::Dynamic)
-            .set_header(vec![
-                Cell::new("Test").add_attribute(Attribute::Bold),
-                Cell::new("Platforms").add_attribute(Attribute::Bold),
-            ]);
-
-        for failure in &result.new_failures {
-            table.add_row(vec![
-                Cell::new(&failure.test_name).fg(Color::Red),
-                Cell::new(failure.platforms.join(", ")),
-            ]);
+        for f in &result.new_failures {
+            output.push_str(&format!(
+                "  {} — {}\n",
+                f.test_name.red(),
+                f.platforms.join(", ").dimmed()
+            ));
         }
-        output.push_str(&format!("{}\n\n", table));
+        output.push('\n');
     }
 
-    if result.fixed_failures.is_empty() {
-        output.push_str(&format!(
-            "{} {}\n\n",
-            "Fixed Failures:".green().bold(),
-            "None".dimmed()
-        ));
-    } else {
+    if !result.fixed_failures.is_empty() {
         output.push_str(&format!(
             "{} ({} tests)\n",
-            "Fixed Failures".green().bold(),
+            "Fixed".green().bold(),
             result.fixed_failures.len()
         ));
-        output.push_str(&format!(
-            "{}\n\n",
-            "These tests were failing but now pass:".dimmed()
-        ));
-
-        let mut table = Table::new();
-        table
-            .load_preset(UTF8_FULL)
-            .set_content_arrangement(ContentArrangement::Dynamic)
-            .set_header(vec![
-                Cell::new("Test").add_attribute(Attribute::Bold),
-                Cell::new("Platforms").add_attribute(Attribute::Bold),
-            ]);
-
-        for failure in &result.fixed_failures {
-            table.add_row(vec![
-                Cell::new(&failure.test_name).fg(Color::Green),
-                Cell::new(failure.platforms.join(", ")),
-            ]);
+        for f in &result.fixed_failures {
+            output.push_str(&format!(
+                "  {} — {}\n",
+                f.test_name.green(),
+                f.platforms.join(", ").dimmed()
+            ));
         }
-        output.push_str(&format!("{}\n\n", table));
+        output.push('\n');
     }
 
     if !result.still_failing.is_empty() {
@@ -456,27 +443,14 @@ pub fn format_comparison_markdown(result: &ComparisonResult) -> String {
             "Still Failing".yellow().bold(),
             result.still_failing.len()
         ));
-        output.push_str(&format!(
-            "{}\n\n",
-            "These tests fail in both revisions:".dimmed()
-        ));
-
-        let mut table = Table::new();
-        table
-            .load_preset(UTF8_FULL)
-            .set_content_arrangement(ContentArrangement::Dynamic)
-            .set_header(vec![
-                Cell::new("Test").add_attribute(Attribute::Bold),
-                Cell::new("Platforms").add_attribute(Attribute::Bold),
-            ]);
-
-        for failure in &result.still_failing {
-            table.add_row(vec![
-                Cell::new(&failure.test_name).fg(Color::Yellow),
-                Cell::new(failure.platforms.join(", ")),
-            ]);
+        for f in &result.still_failing {
+            output.push_str(&format!(
+                "  {} — {}\n",
+                f.test_name.yellow(),
+                f.platforms.join(", ").dimmed()
+            ));
         }
-        output.push_str(&format!("{}\n\n", table));
+        output.push('\n');
     }
 
     output
@@ -500,59 +474,26 @@ pub fn format_perf_markdown(revision: &str, push_id: u64, perf_data: &[JobPerfDa
     let jobs_with_data: Vec<_> = perf_data.iter().filter(|j| j.perf_data.is_some()).collect();
 
     if jobs_with_data.is_empty() {
-        output.push_str(&format!(
-            "{}\n",
-            "No performance data available for selected jobs".dimmed()
-        ));
+        output.push_str(&format!("{}\n", "No performance data available.".dimmed()));
         return output;
     }
 
     for job_perf in jobs_with_data {
         output.push_str(&format!(
-            "{} {}\n",
-            "▶".cyan(),
-            job_perf.job_type_name.bold()
+            "  {} ({}):\n",
+            job_perf.job_type_name.bold(),
+            job_perf.platform.dimmed()
         ));
-        output.push_str(&format!(
-            "  {} {} | {} {}\n",
-            "Platform:".dimmed(),
-            job_perf.platform.cyan(),
-            "Job ID:".dimmed(),
-            job_perf.job_id.to_string().cyan()
-        ));
-
         if let Some(perf) = &job_perf.perf_data {
-            output.push_str(&format!(
-                "  {} {}\n\n",
-                "Framework:".dimmed(),
-                perf.framework.name.yellow()
-            ));
-
-            if !perf.suites.is_empty() {
-                let mut table = Table::new();
-                table
-                    .load_preset(UTF8_FULL)
-                    .set_content_arrangement(ContentArrangement::Dynamic)
-                    .set_header(vec![
-                        Cell::new("Suite").add_attribute(Attribute::Bold),
-                        Cell::new("Metric").add_attribute(Attribute::Bold),
-                        Cell::new("Value").add_attribute(Attribute::Bold),
-                    ]);
-
-                for suite in &perf.suites {
-                    for subtest in &suite.subtests {
-                        table.add_row(vec![
-                            Cell::new(&suite.name),
-                            Cell::new(&subtest.name),
-                            Cell::new(format!("{:.2}", subtest.value)).fg(Color::Cyan),
-                        ]);
-                    }
+            for suite in &perf.suites {
+                for subtest in &suite.subtests {
+                    output.push_str(&format!(
+                        "    {}/{}: {:.2}\n",
+                        suite.name, subtest.name, subtest.value
+                    ));
                 }
-
-                output.push_str(&format!("{}\n", table));
             }
         }
-
         output.push('\n');
     }
 
@@ -578,54 +519,37 @@ pub fn format_similar_history_markdown(history: &SimilarJobHistory) -> String {
         "Repository:".cyan().bold(),
         history.repo.yellow()
     ));
-    output.push_str(&format!(
-        "{} {}\n",
-        "Total Jobs:".cyan().bold(),
-        history.total_jobs.to_string().yellow()
-    ));
 
     let pass_rate_colored = if history.pass_rate >= 90.0 {
-        format!("{:.1}%", history.pass_rate).green()
+        format!("{:.1}%", history.pass_rate).green().to_string()
     } else if history.pass_rate >= 70.0 {
-        format!("{:.1}%", history.pass_rate).yellow()
+        format!("{:.1}%", history.pass_rate).yellow().to_string()
     } else {
-        format!("{:.1}%", history.pass_rate).red()
+        format!("{:.1}%", history.pass_rate).red().to_string()
     };
 
     output.push_str(&format!(
-        "{} {} ({} pass, {} fail)\n\n",
+        "{} {} ({} pass / {} fail / {} total)\n\n",
         "Pass Rate:".cyan().bold(),
         pass_rate_colored,
         history.pass_count.to_string().green(),
-        history.fail_count.to_string().red()
+        history.fail_count.to_string().red(),
+        history.total_jobs
     ));
 
-    output.push_str(&format!("{}\n\n", "Recent Results".bold()));
-
-    let mut table = Table::new();
-    table
-        .load_preset(UTF8_FULL)
-        .set_content_arrangement(ContentArrangement::Dynamic)
-        .set_header(vec![
-            Cell::new("Push ID").add_attribute(Attribute::Bold),
-            Cell::new("Result").add_attribute(Attribute::Bold),
-            Cell::new("Platform").add_attribute(Attribute::Bold),
-        ]);
-
     for job in &history.jobs {
-        let (result_color, result_text) = match job.result.as_str() {
-            "success" => (Color::Green, &job.result),
-            "testfailed" | "busted" => (Color::Red, &job.result),
-            _ => (Color::Yellow, &job.result),
+        let result_str = match job.result.as_str() {
+            "success" => job.result.green().to_string(),
+            "testfailed" | "busted" => job.result.red().to_string(),
+            _ => job.result.yellow().to_string(),
         };
-
-        table.add_row(vec![
-            Cell::new(job.push_id),
-            Cell::new(result_text).fg(result_color),
-            Cell::new(&job.platform),
-        ]);
+        output.push_str(&format!(
+            "  push {} — {} ({})\n",
+            job.push_id,
+            result_str,
+            job.platform.dimmed()
+        ));
     }
 
-    output.push_str(&format!("{}\n", table));
     output
 }

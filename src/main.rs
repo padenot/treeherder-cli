@@ -16,7 +16,9 @@ use models::*;
 use output::*;
 use regex::Regex;
 use reqwest::Client;
+use std::collections::HashSet;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -40,26 +42,20 @@ async fn run() -> Result<()> {
     let match_filter_was_explicit = std::env::args_os()
         .any(|arg| arg == "--match-filter" || arg.to_string_lossy().starts_with("--match-filter="));
 
-    if !args.json && is_running_under_coding_agent() {
-        args.json = true;
+    if !args.use_cache && args.input.is_none() && args.similar_history.is_none() {
+        anyhow::bail!("INPUT is required when not using --use-cache or --similar-history");
     }
 
-    if !args.use_cache
-        && args.input.is_none()
-        && args.similar_history.is_none()
-        && args.lando_job_id.is_none()
-    {
-        anyhow::bail!(
-            "INPUT or --lando-job-id is required when not using --use-cache or --similar-history"
-        );
-    }
-
-    if args.notify && !args.watch {
-        anyhow::bail!("--notify requires --watch to be enabled");
+    if args.notify && !args.watch && !args.stream_failures {
+        anyhow::bail!("--notify requires --watch or --stream-failures to be enabled");
     }
 
     if args.watch && args.use_cache {
         anyhow::bail!("--watch cannot be used with --use-cache");
+    }
+
+    if args.stream_failures && args.use_cache {
+        anyhow::bail!("--stream-failures cannot be used with --use-cache");
     }
 
     if args.compare.is_some() && args.use_cache {
@@ -182,6 +178,8 @@ async fn run() -> Result<()> {
                 metadata.push_id,
                 &jobs_with_logs,
                 args.show_stack_traces,
+                args.all_crash_threads,
+                args.full_stack,
                 true,
             );
             println!("{}", summary);
@@ -199,57 +197,98 @@ async fn run() -> Result<()> {
             .unwrap(),
     );
 
-    // If using --lando-job-id with --watch, wait for the job to land first
-    if let Some(lando_job_id) = args.lando_job_id {
-        if args.watch {
-            pb.set_message(format!("Waiting for Lando job {} to land...", lando_job_id));
-
-            loop {
-                match fetch_lando_job_status(&client, lando_job_id).await {
-                    Ok(status) if status.status == "LANDED" => {
-                        pb.set_message(format!("Lando job {} has landed!", lando_job_id));
-                        break;
-                    }
-                    Ok(status) => {
-                        pb.set_message(format!(
-                            "Lando job {} status: {}. Checking again in {} seconds...",
-                            lando_job_id, status.status, args.watch_interval
-                        ));
-                    }
-                    Err(e) => {
-                        pb.set_message(format!(
-                            "Error checking Lando job {}: {}. Retrying in {} seconds...",
-                            lando_job_id, e, args.watch_interval
-                        ));
-                    }
-                }
-
-                tokio::time::sleep(tokio::time::Duration::from_secs(args.watch_interval)).await;
-            }
+    pb.set_message("Resolving push");
+    let input = args.input.as_ref().unwrap();
+    if args.repo.is_none() {
+        if let Some(repo_from_url) = extract_repo_from_url(input) {
+            args.repo = Some(repo_from_url);
         }
     }
-
-    pb.set_message("Extracting revision from input");
-    let revision = if let Some(lando_job_id) = args.lando_job_id {
-        pb.set_message(format!(
-            "Fetching commit hash from Lando job {}",
-            lando_job_id
-        ));
-        fetch_commit_from_lando_job(&client, lando_job_id).await?
-    } else {
-        let input = args.input.as_ref().unwrap();
-        if args.repo.is_none() {
-            if let Some(repo_from_url) = extract_repo_from_url(input) {
-                args.repo = Some(repo_from_url);
-            }
-        }
-        extract_revision(input)?
-    };
-
     let repo = args.repo.unwrap_or_else(|| "try".to_string());
 
-    pb.set_message("Fetching push ID");
-    let push_id = fetch_push_id(&client, &repo, &revision).await?;
+    let (revision, push_ids) = if let Some(lando_commit_id) = extract_lando_commit_id(input) {
+        let pushes = fetch_push_ids_by_lando_commit(&client, &repo, lando_commit_id).await?;
+        let revision = pushes[0].1.clone();
+        let ids: Vec<u64> = pushes.into_iter().map(|(id, _)| id).collect();
+        (revision, ids)
+    } else {
+        let revision = extract_revision(input)?;
+        let push_id = fetch_push_id(&client, &repo, &revision).await?;
+        (revision, vec![push_id])
+    };
+    let push_id = push_ids[0];
+
+    if args.stream_failures {
+        pb.finish_and_clear();
+        let client = Arc::new(client);
+        let mut reported_ids: HashSet<u64> = HashSet::new();
+
+        loop {
+            let all_jobs = fetch_jobs_multi(&client, &push_ids).await?;
+
+            let newly_failed: Vec<Job> = all_jobs
+                .iter()
+                .filter(|j| {
+                    (j.result == "testfailed" || j.result == "busted")
+                        && !reported_ids.contains(&j.id)
+                        && (args.include_intermittent || j.failure_classification_id != Some(4))
+                })
+                .cloned()
+                .collect();
+
+            for job in newly_failed {
+                reported_ids.insert(job.id);
+                match fetch_job_details_with_errors(&client, &repo, job).await {
+                    Ok((job, errors)) => {
+                        let jwl = JobWithLogs {
+                            job,
+                            errors,
+                            log_matches: vec![],
+                            log_dir: None,
+                        };
+                        if args.json {
+                            println!("{}", serde_json::to_string(&jwl)?);
+                        } else {
+                            let summary = format_markdown_summary(
+                                &revision,
+                                push_id,
+                                &[jwl],
+                                args.show_stack_traces,
+                                args.all_crash_threads,
+                                args.full_stack,
+                                false,
+                            );
+                            print!("{}", summary);
+                        }
+                        std::io::stdout().flush()?;
+                    }
+                    Err(e) => eprintln!("Failed to fetch details for job: {}", e),
+                }
+            }
+
+            if are_all_jobs_complete(&all_jobs) {
+                if args.notify {
+                    let failed_count = all_jobs
+                        .iter()
+                        .filter(|j| j.result == "testfailed" || j.result == "busted")
+                        .count();
+                    let message = if failed_count > 0 {
+                        format!("{} of {} jobs failed", failed_count, all_jobs.len())
+                    } else {
+                        format!("All {} jobs passed!", all_jobs.len())
+                    };
+                    if let Err(e) = send_notification("Treeherder Jobs Complete", &message) {
+                        eprintln!("Failed to send notification: {}", e);
+                    }
+                }
+                break;
+            }
+
+            tokio::time::sleep(tokio::time::Duration::from_secs(args.watch_interval)).await;
+        }
+
+        return Ok(());
+    }
 
     if let Some(compare_revision_input) = &args.compare {
         pb.set_message("Comparison mode: fetching both revisions");
@@ -258,7 +297,7 @@ async fn run() -> Result<()> {
         let compare_push_id = fetch_push_id(&client, &repo, &compare_revision).await?;
 
         pb.set_message("Fetching jobs for base revision");
-        let base_jobs = fetch_jobs(&client, push_id).await?;
+        let base_jobs = fetch_jobs_multi(&client, &push_ids).await?;
 
         pb.set_message("Fetching jobs for comparison revision");
         let compare_jobs = fetch_jobs(&client, compare_push_id).await?;
@@ -396,7 +435,7 @@ async fn run() -> Result<()> {
     }
 
     pb.set_message("Fetching jobs");
-    let mut all_jobs = fetch_jobs(&client, push_id).await?;
+    let mut all_jobs = fetch_jobs_multi(&client, &push_ids).await?;
 
     if args.watch {
         pb.finish_with_message("Watch mode: monitoring job progress");
@@ -416,7 +455,7 @@ async fn run() -> Result<()> {
             ));
 
             tokio::time::sleep(tokio::time::Duration::from_secs(args.watch_interval)).await;
-            all_jobs = fetch_jobs(&client, push_id).await?;
+            all_jobs = fetch_jobs_multi(&client, &push_ids).await?;
         }
 
         watch_pb.finish_with_message("All jobs completed!");
@@ -578,6 +617,8 @@ async fn run() -> Result<()> {
                 push_id,
                 &jobs_with_logs,
                 args.show_stack_traces,
+                args.all_crash_threads,
+                args.full_stack,
                 args.fetch_logs,
             );
             println!("{}", summary);
@@ -771,6 +812,8 @@ async fn run() -> Result<()> {
                 push_id,
                 &jobs_with_logs,
                 args.show_stack_traces,
+                args.all_crash_threads,
+                args.full_stack,
                 args.fetch_logs,
             );
             println!("{}", summary);
