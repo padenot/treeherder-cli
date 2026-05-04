@@ -410,13 +410,11 @@ pub async fn fetch_and_save_log(
 
 pub async fn fetch_job_with_full_logs(
     client: &Client,
-    repo: &str,
     job: Job,
+    job_detail: JobDetail,
     temp_dir: &Path,
     pattern: Option<&Regex>,
 ) -> Result<JobWithLogs> {
-    let job_detail = fetch_job_details(client, repo, job.id).await?;
-
     let job_dir = temp_dir.join(format!("job_{}", job.id));
     fs::create_dir_all(&job_dir)?;
 
@@ -433,8 +431,14 @@ pub async fn fetch_job_with_full_logs(
         all_errors.extend(errors);
     }
 
-    let log_futures: Vec<_> = job_detail
+    let is_failure = job.result == "testfailed" || job.result == "busted";
+    let logs_to_fetch: Vec<_> = job_detail
         .logs
+        .iter()
+        .filter(|log_ref| is_failure || log_ref.name != "live_backing_log")
+        .collect();
+
+    let log_futures: Vec<_> = logs_to_fetch
         .iter()
         .map(|log_ref| fetch_and_save_log(client, &log_ref.url, &log_ref.name, &job_dir))
         .collect();
@@ -443,8 +447,7 @@ pub async fn fetch_job_with_full_logs(
 
     let mut log_matches = Vec::new();
     if let Some(regex) = pattern {
-        for (log_ref, log_path) in job_detail
-            .logs
+        for (log_ref, log_path) in logs_to_fetch
             .iter()
             .zip(log_results.iter().filter_map(|r| r.as_ref().ok()))
         {

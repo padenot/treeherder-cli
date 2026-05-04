@@ -586,7 +586,37 @@ async fn run() -> Result<()> {
     let client = Arc::new(client);
 
     if args.fetch_logs {
-        let pb_logs = ProgressBar::new(filtered_jobs.len() as u64);
+        let pb_details = ProgressBar::new(filtered_jobs.len() as u64);
+        pb_details.set_style(
+            ProgressStyle::default_bar()
+                .template("{bar:40.cyan/blue} {pos}/{len} {msg}")
+                .unwrap()
+                .progress_chars("=>-"),
+        );
+        pb_details.set_message("Fetching job details");
+        let pb_details = Arc::new(pb_details);
+
+        let job_and_details: Vec<_> = stream::iter(filtered_jobs.clone())
+            .map(|job| {
+                let client = Arc::clone(&client);
+                let repo = repo.clone();
+                let pb = Arc::clone(&pb_details);
+                async move {
+                    let result = fetch_job_details(&client, &repo, job.id).await;
+                    pb.inc(1);
+                    result.map(|d| (job, d))
+                }
+            })
+            .buffer_unordered(50)
+            .collect::<Vec<_>>()
+            .await
+            .into_iter()
+            .filter_map(|r| r.ok())
+            .collect();
+
+        pb_details.finish_with_message("Fetched job details");
+
+        let pb_logs = ProgressBar::new(job_and_details.len() as u64);
         pb_logs.set_style(
             ProgressStyle::default_bar()
                 .template("{bar:40.cyan/blue} {pos}/{len} {msg}")
@@ -594,25 +624,23 @@ async fn run() -> Result<()> {
                 .progress_chars("=>-"),
         );
         pb_logs.set_message("Fetching and processing logs");
-
         let pb_logs = Arc::new(pb_logs);
 
-        let jobs_with_logs: Vec<_> = stream::iter(filtered_jobs.clone())
-            .map(|job| {
+        let pattern = pattern.as_ref();
+
+        let jobs_with_logs: Vec<_> = stream::iter(job_and_details)
+            .map(|(job, detail)| {
                 let client = Arc::clone(&client);
-                let repo = repo.clone();
                 let pb_logs = Arc::clone(&pb_logs);
                 let log_path = log_storage_path.clone();
-                let pattern = pattern.as_ref();
-
                 async move {
                     let result =
-                        fetch_job_with_full_logs(&client, &repo, job, &log_path, pattern).await;
+                        fetch_job_with_full_logs(&client, job, detail, &log_path, pattern).await;
                     pb_logs.inc(1);
                     result
                 }
             })
-            .buffer_unordered(5)
+            .buffer_unordered(50)
             .collect::<Vec<_>>()
             .await
             .into_iter()
