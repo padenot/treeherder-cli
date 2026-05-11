@@ -16,6 +16,7 @@ use models::*;
 use output::*;
 use regex::Regex;
 use reqwest::Client;
+use std::cmp::Reverse;
 use std::collections::HashSet;
 use std::fs;
 use std::io::Write;
@@ -50,8 +51,10 @@ INPUT: revision hash|Treeherder URL|Lando commit ID (numeric or URL with ?landoC
 --perf show performance/resource data
 --similar-history <job-id> job history via similar_jobs API|--similar-count <N> (default 50)
 --duration-min <N> only jobs longer than N seconds
+--context <N> show N pushes before and after this push (for bisecting autoland failures)
 Ex: treeherder-cli a13b9fc22101|treeherder-cli 12345 --stream-failures|treeherder-cli a13b9fc22101 --json
 Ex: treeherder-cli a13b9fc22101 --filter mochitest --platform linux|treeherder-cli a13b9fc22101 --compare b2c3d4e5
+Ex: treeherder-cli a13b9fc22101 --repo autoland --context 5
 "#
     );
 }
@@ -256,6 +259,50 @@ async fn run() -> Result<()> {
         (revision, vec![push_id])
     };
     let push_id = push_ids[0];
+
+    if let Some(context) = args.context {
+        pb.set_message("Fetching surrounding pushes");
+        let (before, after) = fetch_pushes_around(&client, &repo, push_id, context).await?;
+        pb.finish_and_clear();
+
+        let base_url = format!("https://treeherder.mozilla.org/jobs?repo={}", repo);
+
+        println!(
+            "## Pushes around {}",
+            &revision[..std::cmp::min(12, revision.len())]
+        );
+        println!();
+
+        let mut after_sorted = after;
+        after_sorted.sort_by_key(|p| p.id);
+        for p in &after_sorted {
+            println!(
+                "  after  {} (push {})  {}&revision={}",
+                &p.revision[..std::cmp::min(12, p.revision.len())],
+                p.id,
+                base_url,
+                p.revision
+            );
+        }
+        println!(
+            "> this   {} (push {})",
+            &revision[..std::cmp::min(12, revision.len())],
+            push_id
+        );
+        let mut before_sorted = before;
+        before_sorted.sort_by_key(|p| Reverse(p.id));
+        for p in &before_sorted {
+            println!(
+                "  before {} (push {})  {}&revision={}",
+                &p.revision[..std::cmp::min(12, p.revision.len())],
+                p.id,
+                base_url,
+                p.revision
+            );
+        }
+        println!();
+        return Ok(());
+    }
 
     if args.stream_failures {
         pb.finish_and_clear();

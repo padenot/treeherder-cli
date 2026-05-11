@@ -124,4 +124,9 @@ pub struct Args {
         help = "Show full crash stack details including registers and 'Found by' annotations"
     )]
     pub full_stack: bool,
+    #[arg(
+        long,
+        help = "Show N pushes before and after this push (useful for bisecting autoland failures)"
+    )]
+    pub context: Option<u64>,
 }

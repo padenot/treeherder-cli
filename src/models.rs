@@ -10,6 +10,9 @@ pub struct PushResponse {
 #[derive(Deserialize, Debug)]
 pub struct PushResult {
     pub id: u64,
+    pub revision: String,
+    #[allow(dead_code)]
+    pub push_timestamp: u64,
 }
 
 #[derive(Deserialize, Debug)]

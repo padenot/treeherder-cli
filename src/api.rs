@@ -104,6 +104,45 @@ pub async fn fetch_push_id(client: &Client, repo: &str, revision: &str) -> Resul
         .ok_or_else(|| anyhow::anyhow!("No push found for revision"))
 }
 
+pub async fn fetch_pushes_around(
+    client: &Client,
+    repo: &str,
+    push_id: u64,
+    count: u64,
+) -> Result<(Vec<PushResult>, Vec<PushResult>)> {
+    let before_url = format!(
+        "https://treeherder.mozilla.org/api/project/{}/push/?count={}&id__lt={}&ordering=-push_timestamp",
+        repo, count, push_id
+    );
+    let after_url = format!(
+        "https://treeherder.mozilla.org/api/project/{}/push/?count={}&id__gt={}&ordering=push_timestamp",
+        repo, count, push_id
+    );
+
+    let (before_resp, after_resp) = tokio::try_join!(
+        async {
+            client
+                .get(&before_url)
+                .send()
+                .await?
+                .json::<PushResponse>()
+                .await
+                .map_err(anyhow::Error::from)
+        },
+        async {
+            client
+                .get(&after_url)
+                .send()
+                .await?
+                .json::<PushResponse>()
+                .await
+                .map_err(anyhow::Error::from)
+        }
+    )?;
+
+    Ok((before_resp.results, after_resp.results))
+}
+
 pub async fn fetch_jobs_multi(client: &Client, push_ids: &[u64]) -> Result<Vec<Job>> {
     let futures: Vec<_> = push_ids.iter().map(|&id| fetch_jobs(client, id)).collect();
     let results = futures::future::join_all(futures).await;
