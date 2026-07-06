@@ -571,6 +571,16 @@ async fn run() -> Result<()> {
         args.match_filter.clone()
     };
 
+    let success_count = all_jobs
+        .iter()
+        .filter(|job| job.result == "success")
+        .count();
+    let success_platforms: HashSet<_> = all_jobs
+        .iter()
+        .filter(|job| job.result == "success")
+        .map(|job| job.platform.clone())
+        .collect();
+
     let mut filtered_jobs: Vec<_> = match effective_match_filter {
         MatchFilter::Failure => all_jobs
             .into_iter()
@@ -602,7 +612,21 @@ async fn run() -> Result<()> {
 
     if filtered_jobs.is_empty() {
         pb.finish_with_message("No jobs found matching criteria");
-        println!("No jobs found matching the specified criteria");
+        if matches!(effective_match_filter, MatchFilter::Failure) && success_count > 0 {
+            println!(
+                "{} passing job{} across {} platform{}, no failures found",
+                success_count,
+                if success_count == 1 { "" } else { "s" },
+                success_platforms.len(),
+                if success_platforms.len() == 1 {
+                    ""
+                } else {
+                    "s"
+                }
+            );
+        } else {
+            println!("No jobs found matching the specified criteria");
+        }
         return Ok(());
     }
 
