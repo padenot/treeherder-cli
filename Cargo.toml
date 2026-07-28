@@ -1,6 +1,6 @@
 [package]
 name = "treeherder-cli"
-version = "0.2.15"
+version = "0.2.16"
 edition = "2021"
 description = "Fetch errors from a Firefox CI push on Treeherder, formatted as markdown"
 license = "MPL-2.0"
