@@ -34,6 +34,10 @@ treeherder-cli a13b9fc22101 --group-by test
 # Compare revisions to find regressions
 treeherder-cli a13b9fc22101 --compare b2c3d4e5f678
 
+# Analyze sparse CI across a range of Autoland pushes
+treeherder-cli --repo autoland --range goodrevision..badrevision --suspects
+treeherder-cli badrevision --repo autoland --lookback 6 --suspects --json
+
 # Check test history for intermittent detection
 treeherder-cli --similar-history 543981186 --similar-count 100 --repo autoland
 
@@ -70,4 +74,19 @@ treeherder-cli --use-cache --cache-dir ./logs --pattern "ERROR"
 
 # Switch repository
 treeherder-cli a13b9fc22101 --repo autoland
+```
+
+`--suspects` reports candidate cause windows from the last observed pass to the
+first observed fail. Pushes where the job did not run stay in the candidate window.
+
+## Real Autoland fixtures
+
+Range analysis has real Autoland replay fixtures under `tests/fixtures/`; normal
+tests use them offline. To refresh a trimmed fixture:
+
+```bash
+TREEHERDER_FIXTURE_RANGE=startrev..endrev \
+TREEHERDER_FIXTURE_JOB_FILTER=job-substring \
+TREEHERDER_FIXTURE_PLATFORM=platform \
+cargo test record_autoland_range_fixture_from_env -- --ignored --nocapture
 ```
