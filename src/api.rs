@@ -90,6 +90,10 @@ pub async fn fetch_revision_from_lando(
 }
 
 pub async fn fetch_push_id(client: &Client, repo: &str, revision: &str) -> Result<u64> {
+    Ok(fetch_push(client, repo, revision).await?.id)
+}
+
+pub async fn fetch_push(client: &Client, repo: &str, revision: &str) -> Result<PushRef> {
     let url = format!(
         "https://treeherder.mozilla.org/api/project/{}/push/?full=true&count=10&revision={}",
         repo, revision
@@ -100,7 +104,7 @@ pub async fn fetch_push_id(client: &Client, repo: &str, revision: &str) -> Resul
     response
         .results
         .first()
-        .map(|r| r.id)
+        .map(PushRef::from)
         .ok_or_else(|| anyhow::anyhow!("No push found for revision"))
 }
 
@@ -141,6 +145,70 @@ pub async fn fetch_pushes_around(
     )?;
 
     Ok((before_resp.results, after_resp.results))
+}
+
+pub async fn fetch_pushes_between(
+    client: &Client,
+    repo: &str,
+    start_push_id: u64,
+    end_push_id: u64,
+) -> Result<Vec<PushRef>> {
+    let low = start_push_id.min(end_push_id);
+    let high = start_push_id.max(end_push_id);
+    let url = format!(
+        "https://treeherder.mozilla.org/api/project/{}/push/?count=500&id__gte={}&id__lte={}&ordering=push_timestamp",
+        repo, low, high
+    );
+
+    let response: PushResponse = client.get(&url).send().await?.json().await?;
+    let mut pushes: Vec<_> = response.results.iter().map(PushRef::from).collect();
+    pushes.sort_by_key(|push| push.id);
+
+    if pushes.len() >= 500 {
+        anyhow::bail!("range returned 500 pushes; choose a smaller range");
+    }
+
+    Ok(pushes)
+}
+
+pub async fn fetch_push_window_ending_at(
+    client: &Client,
+    repo: &str,
+    end_push: &PushRef,
+    lookback: u64,
+) -> Result<Vec<PushRef>> {
+    let url = format!(
+        "https://treeherder.mozilla.org/api/project/{}/push/?count={}&id__lt={}&ordering=-push_timestamp",
+        repo, lookback, end_push.id
+    );
+
+    let response: PushResponse = client.get(&url).send().await?.json().await?;
+    let mut pushes: Vec<_> = response.results.iter().map(PushRef::from).collect();
+    pushes.push(end_push.clone());
+    pushes.sort_by_key(|push| push.id);
+    pushes.dedup_by_key(|push| push.id);
+
+    Ok(pushes)
+}
+
+pub async fn fetch_jobs_by_push(client: &Client, pushes: &[PushRef]) -> Result<Vec<PushJobs>> {
+    let futures: Vec<_> = pushes
+        .iter()
+        .cloned()
+        .map(|push| async move {
+            let jobs = fetch_jobs(client, push.id).await?;
+            Ok::<_, anyhow::Error>(PushJobs { push, jobs })
+        })
+        .collect();
+    let results = futures::future::join_all(futures).await;
+
+    let mut push_jobs = Vec::new();
+    for result in results {
+        push_jobs.push(result?);
+    }
+    push_jobs.sort_by_key(|push_jobs| push_jobs.push.id);
+
+    Ok(push_jobs)
 }
 
 pub async fn fetch_jobs_multi(client: &Client, push_ids: &[u64]) -> Result<Vec<Job>> {
@@ -340,7 +408,7 @@ pub async fn download_job_artifacts(
 
 pub async fn fetch_error_summary(client: &Client, log_url: &str) -> Result<Vec<ErrorLine>> {
     if log_url.contains("errorsummary") {
-        let response = client.get(log_url).send().await?.text().await?;
+        let response = fetch_text_following_taskcluster_redirect(client, log_url).await?;
 
         let mut errors = Vec::new();
         for line in response.lines() {
@@ -360,6 +428,16 @@ pub async fn fetch_error_summary(client: &Client, log_url: &str) -> Result<Vec<E
     } else {
         Ok(vec![])
     }
+}
+
+async fn fetch_text_following_taskcluster_redirect(client: &Client, url: &str) -> Result<String> {
+    let text = client.get(url).send().await?.text().await?;
+    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&text) {
+        if let Some(artifact_url) = value.get("url").and_then(|url| url.as_str()) {
+            return Ok(client.get(artifact_url).send().await?.text().await?);
+        }
+    }
+    Ok(text)
 }
 
 fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
@@ -636,6 +714,8 @@ fn search_log_file(log_path: &PathBuf, pattern: &Regex, log_name: &str) -> Resul
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::range::{analyze_range_suspects, parse_revision_range};
+    use reqwest::Client;
 
     #[test]
     fn test_extract_lando_commit_id_from_url_with_lando_instance() {
@@ -656,5 +736,91 @@ mod tests {
             extract_lando_instance(url),
             Some("lando-prod-2025".to_string())
         );
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn record_autoland_range_fixture_from_env() -> Result<()> {
+        let repo =
+            std::env::var("TREEHERDER_FIXTURE_REPO").unwrap_or_else(|_| "autoland".to_string());
+        let range = std::env::var("TREEHERDER_FIXTURE_RANGE")
+            .map_err(|_| anyhow::anyhow!("set TREEHERDER_FIXTURE_RANGE=START..END"))?;
+        let job_filter = std::env::var("TREEHERDER_FIXTURE_JOB_FILTER").map_err(|_| {
+            anyhow::anyhow!("set TREEHERDER_FIXTURE_JOB_FILTER to trim the recorded fixture")
+        })?;
+        let platform_filter = std::env::var("TREEHERDER_FIXTURE_PLATFORM").ok();
+
+        let client = Client::builder()
+            .user_agent("treeherder-cli fixture recorder")
+            .build()?;
+        let (start_revision, end_revision) = parse_revision_range(&range)?;
+        let start_push = fetch_push(&client, &repo, &extract_revision(&start_revision)?).await?;
+        let end_push = fetch_push(&client, &repo, &extract_revision(&end_revision)?).await?;
+        let pushes = fetch_pushes_between(&client, &repo, start_push.id, end_push.id).await?;
+        let mut push_jobs = fetch_jobs_by_push(&client, &pushes).await?;
+
+        for push in &mut push_jobs {
+            push.jobs.retain(|job| {
+                job.job_type_name.contains(&job_filter)
+                    && platform_filter
+                        .as_ref()
+                        .map_or(true, |platform| job.platform == *platform)
+            });
+        }
+
+        let failed_jobs: Vec<_> = push_jobs
+            .iter()
+            .flat_map(|push_jobs| {
+                push_jobs
+                    .jobs
+                    .iter()
+                    .filter(|job| job.result == "testfailed" || job.result == "busted")
+                    .cloned()
+                    .map(|job| (push_jobs.push.clone(), job))
+            })
+            .collect();
+
+        let futures = failed_jobs.into_iter().map(|(push, job)| {
+            let client = client.clone();
+            let repo = repo.clone();
+            async move {
+                fetch_job_details_with_errors(&client, &repo, job)
+                    .await
+                    .map(|(job, errors)| JobObservation { push, job, errors })
+            }
+        });
+        let observations = futures::future::join_all(futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>>>()?;
+        let analysis = analyze_range_suspects(&repo, &push_jobs, &observations);
+
+        let fixture_observations = observations
+            .iter()
+            .map(|observation| {
+                serde_json::json!({
+                    "push_id": observation.push.id,
+                    "job_id": observation.job.id,
+                    "errors": observation.errors,
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let fixture = serde_json::json!({
+            "name": format!("{} {}", repo, range),
+            "source": {
+                "repo": repo,
+                "range": range,
+                "job_filter": job_filter,
+                "platform_filter": platform_filter,
+            },
+            "repo": analysis.repo,
+            "pushes": push_jobs,
+            "observations": fixture_observations,
+            "analysis": analysis,
+        });
+
+        println!("{}", serde_json::to_string_pretty(&fixture)?);
+        Ok(())
     }
 }

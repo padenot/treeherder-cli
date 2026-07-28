@@ -92,6 +92,25 @@ pub struct Args {
     pub group_by: Option<GroupBy>,
     #[arg(long, help = "Compare with another revision to show new failures")]
     pub compare: Option<String>,
+    #[arg(
+        long,
+        help = "Analyze an inclusive revision range, written as START..END or START...END"
+    )]
+    pub range: Option<String>,
+    #[arg(long, help = "Start revision for range analysis, inclusive")]
+    pub from: Option<String>,
+    #[arg(long, help = "End revision for range analysis, inclusive")]
+    pub to: Option<String>,
+    #[arg(
+        long,
+        help = "Analyze N pushes before INPUT plus INPUT as an inclusive range"
+    )]
+    pub lookback: Option<u64>,
+    #[arg(
+        long,
+        help = "Infer likely candidate push windows for first observed failures in a range"
+    )]
+    pub suspects: bool,
     #[arg(long, help = "Download job artifacts")]
     pub download_artifacts: bool,
     #[arg(

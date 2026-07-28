@@ -15,6 +15,23 @@ pub struct PushResult {
     pub push_timestamp: u64,
 }
 
+#[derive(Deserialize, Serialize, Debug, Clone, PartialEq, Eq)]
+pub struct PushRef {
+    pub id: u64,
+    pub revision: String,
+    pub push_timestamp: u64,
+}
+
+impl From<&PushResult> for PushRef {
+    fn from(push: &PushResult) -> Self {
+        Self {
+            id: push.id,
+            revision: push.revision.clone(),
+            push_timestamp: push.push_timestamp,
+        }
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct JobsResponse {
     pub results: Vec<Vec<serde_json::Value>>,
@@ -123,6 +140,86 @@ pub struct JobWithLogs {
     pub log_matches: Vec<LogMatch>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub log_dir: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushJobs {
+    pub push: PushRef,
+    pub jobs: Vec<Job>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct JobObservation {
+    pub push: PushRef,
+    pub job: Job,
+    pub errors: Vec<ErrorLine>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RangePushSummary {
+    pub push: PushRef,
+    pub jobs: Vec<JobWithLogs>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RangeJobSummary {
+    pub repo: String,
+    pub pushes: Vec<RangePushSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct FailureKey {
+    pub job_type_name: String,
+    pub platform: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub test: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub subtest: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FailureState {
+    Fail,
+    Pass,
+    OtherFail,
+    NotRun,
+    Pending,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PushFailureObservation {
+    pub push: PushRef,
+    pub state: FailureState,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub job_id: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SuspectConfidence {
+    High,
+    Medium,
+    Low,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SuspectRange {
+    pub failure_key: FailureKey,
+    pub first_failed: PushRef,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_pass: Option<PushRef>,
+    pub candidate_pushes: Vec<PushFailureObservation>,
+    pub confidence: SuspectConfidence,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RangeAnalysisResult {
+    pub repo: String,
+    pub pushes: Vec<PushRef>,
+    pub suspects: Vec<SuspectRange>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]

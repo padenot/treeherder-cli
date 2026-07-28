@@ -1,0 +1,105 @@
+{
+  "name": "autoland sparse CI range, pass then three not-run pushes then fail",
+  "source": {
+    "repo": "autoland",
+    "recorded_from": "https://treeherder.mozilla.org/jobs?repo=autoland&revision=2c4d5da411656b4a3aea51a96c4b205ea7b7f26e",
+    "push_ids": [1979941, 1979944, 1979946, 1979947, 1979948],
+    "note": "Trimmed real Treeherder data: only the target job is retained for replay."
+  },
+  "repo": "autoland",
+  "pushes": [
+    {
+      "push": {
+        "id": 1979941,
+        "revision": "f2d201ed474492b1a6e531d66638593322fce21a",
+        "push_timestamp": 1784738297
+      },
+      "jobs": [
+        {
+          "id": 580259732,
+          "job_type_name": "test-windows11-64-25h2/debug-mochitest-browser-chrome-2",
+          "job_type_symbol": "bc2",
+          "platform": "windows11-64-25h2",
+          "platform_option": "debug",
+          "result": "success",
+          "state": "completed",
+          "failure_classification_id": 1,
+          "duration": 26
+        }
+      ]
+    },
+    {
+      "push": {
+        "id": 1979944,
+        "revision": "5a2c7c540c8ba9f6dc4a430434c302ef69d55ced",
+        "push_timestamp": 1784738325
+      },
+      "jobs": []
+    },
+    {
+      "push": {
+        "id": 1979946,
+        "revision": "1d60c318b6873cf380ede955d358ad8d44a4846c",
+        "push_timestamp": 1784738349
+      },
+      "jobs": []
+    },
+    {
+      "push": {
+        "id": 1979947,
+        "revision": "c52aa33f8afe0945126c22d95bdbaf6c9abbc4a5",
+        "push_timestamp": 1784738376
+      },
+      "jobs": []
+    },
+    {
+      "push": {
+        "id": 1979948,
+        "revision": "2c4d5da411656b4a3aea51a96c4b205ea7b7f26e",
+        "push_timestamp": 1784738403
+      },
+      "jobs": [
+        {
+          "id": 580258973,
+          "job_type_name": "test-windows11-64-25h2/debug-mochitest-browser-chrome-2",
+          "job_type_symbol": "bc2",
+          "platform": "windows11-64-25h2",
+          "platform_option": "debug",
+          "result": "testfailed",
+          "state": "completed",
+          "failure_classification_id": 2,
+          "duration": 28
+        }
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "push_id": 1979948,
+      "job_id": 580258973,
+      "errors": [
+        {
+          "action": "test_result",
+          "line": 16965,
+          "test": "browser/components/customizableui/test/browser_1003588_no_specials_in_panel.js",
+          "subtest": "checkDragging",
+          "status": "FAIL",
+          "message": "Should have 3 elements to try and drag. - Got 4, expected 3",
+          "stack": null,
+          "signature": null,
+          "stackwalk_stdout": null
+        }
+      ]
+    }
+  ],
+  "expected": {
+    "job_type_name": "test-windows11-64-25h2/debug-mochitest-browser-chrome-2",
+    "platform": "windows11-64-25h2",
+    "test": "browser/components/customizableui/test/browser_1003588_no_specials_in_panel.js",
+    "subtest": "checkDragging",
+    "first_failed_push_id": 1979948,
+    "last_pass_push_id": 1979941,
+    "candidate_push_ids": [1979944, 1979946, 1979947, 1979948],
+    "confidence": "medium"
+  }
+}

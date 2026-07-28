@@ -42,6 +42,14 @@ pub fn format_comparison_json(result: &ComparisonResult) -> Result<String> {
     Ok(serde_json::to_string_pretty(result)?)
 }
 
+pub fn format_range_json(result: &RangeJobSummary) -> Result<String> {
+    Ok(serde_json::to_string_pretty(result)?)
+}
+
+pub fn format_range_suspects_json(result: &RangeAnalysisResult) -> Result<String> {
+    Ok(serde_json::to_string_pretty(result)?)
+}
+
 pub fn format_perf_json(revision: &str, push_id: u64, perf_data: &[JobPerfData]) -> Result<String> {
     let output = serde_json::json!({
         "revision": revision,

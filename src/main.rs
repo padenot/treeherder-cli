@@ -3,6 +3,7 @@ mod cache;
 mod cli;
 mod models;
 mod output;
+mod range;
 mod util;
 
 use anyhow::Result;
@@ -14,6 +15,7 @@ use futures::stream::{self, StreamExt};
 use indicatif::{ProgressBar, ProgressStyle};
 use models::*;
 use output::*;
+use range::*;
 use regex::Regex;
 use reqwest::Client;
 use std::cmp::Reverse;
@@ -44,6 +46,8 @@ INPUT: revision hash|Treeherder URL|Lando commit ID (numeric or URL with ?landoC
 --include-intermittent include intermittent failures
 --group-by test group failures by test name across platforms
 --compare <REV> show only failures not in REV
+--range <A..B>|--from <A> --to <B>|--lookback <N> analyze a range of pushes
+--suspects infer candidate push windows for first observed failures in a range
 --show-stack-traces show crash stack traces|--all-crash-threads all threads|--full-stack registers+annotations
 --fetch-logs download full logs|--pattern <regex> search logs|--match-filter failure|success|all
 --cache-dir <DIR> store logs|--use-cache read from cache (no download)
@@ -55,8 +59,300 @@ INPUT: revision hash|Treeherder URL|Lando commit ID (numeric or URL with ?landoC
 Ex: treeherder-cli a13b9fc22101|treeherder-cli 12345 --stream-failures|treeherder-cli a13b9fc22101 --json
 Ex: treeherder-cli a13b9fc22101 --filter mochitest --platform linux|treeherder-cli a13b9fc22101 --compare b2c3d4e5
 Ex: treeherder-cli a13b9fc22101 --repo autoland --context 5
+Ex: treeherder-cli --repo autoland --range good..bad --suspects --json
 "#
     );
+}
+
+fn has_range_request(args: &Args) -> bool {
+    args.range.is_some() || args.from.is_some() || args.to.is_some() || args.lookback.is_some()
+}
+
+fn validate_range_args(args: &Args) -> Result<()> {
+    if args.range.is_some() && (args.from.is_some() || args.to.is_some()) {
+        anyhow::bail!("--range cannot be combined with --from or --to");
+    }
+    if args.from.is_some() != args.to.is_some() {
+        anyhow::bail!("--from and --to must be used together");
+    }
+    if args.lookback.is_some() && (args.range.is_some() || args.from.is_some() || args.to.is_some())
+    {
+        anyhow::bail!("--lookback cannot be combined with --range, --from, or --to");
+    }
+    if args.lookback.is_some() && args.input.is_none() {
+        anyhow::bail!("--lookback requires INPUT as the ending revision");
+    }
+    if has_range_request(args) {
+        if args.use_cache {
+            anyhow::bail!("range analysis cannot be used with --use-cache");
+        }
+        if args.watch {
+            anyhow::bail!("range analysis cannot be used with --watch");
+        }
+        if args.stream_failures {
+            anyhow::bail!("range analysis cannot be used with --stream-failures");
+        }
+        if args.compare.is_some() {
+            anyhow::bail!("range analysis cannot be used with --compare");
+        }
+        if args.fetch_logs {
+            anyhow::bail!("range analysis cannot be used with --fetch-logs yet");
+        }
+        if args.download_artifacts {
+            anyhow::bail!("range analysis cannot be used with --download-artifacts yet");
+        }
+        if args.perf {
+            anyhow::bail!("range analysis cannot be used with --perf yet");
+        }
+        if args.group_by.is_some() {
+            anyhow::bail!("range analysis cannot be used with --group-by yet");
+        }
+    }
+    Ok(())
+}
+
+async fn resolve_push_input(client: &Client, repo: &str, input: &str) -> Result<PushRef> {
+    let revision = if let Some(lando_commit_id) = extract_lando_commit_id(input) {
+        let lando_instance = extract_lando_instance(input);
+        fetch_revision_from_lando(client, lando_instance.as_deref(), lando_commit_id).await?
+    } else {
+        extract_revision(input)?
+    };
+
+    fetch_push(client, repo, &revision).await
+}
+
+async fn resolve_range_pushes(client: &Client, repo: &str, args: &Args) -> Result<Vec<PushRef>> {
+    if let Some(lookback) = args.lookback {
+        let input = args.input.as_ref().unwrap();
+        let end_push = resolve_push_input(client, repo, input).await?;
+        return fetch_push_window_ending_at(client, repo, &end_push, lookback).await;
+    }
+
+    let (from, to) = if let Some(range) = &args.range {
+        parse_revision_range(range)?
+    } else {
+        (
+            args.from.as_ref().unwrap().clone(),
+            args.to.as_ref().unwrap().clone(),
+        )
+    };
+
+    let start_push = resolve_push_input(client, repo, &from).await?;
+    let end_push = resolve_push_input(client, repo, &to).await?;
+    fetch_pushes_between(client, repo, start_push.id, end_push.id).await
+}
+
+fn filter_push_jobs(
+    push_jobs: &[PushJobs],
+    args: &Args,
+    match_filter: Option<MatchFilter>,
+) -> Result<Vec<PushJobs>> {
+    let platform_regex = args
+        .platform
+        .as_ref()
+        .map(|pattern| Regex::new(pattern))
+        .transpose()?;
+
+    let filtered = push_jobs
+        .iter()
+        .map(|push_jobs| {
+            let jobs = push_jobs
+                .jobs
+                .iter()
+                .filter(|job| {
+                    if let Some(match_filter) = &match_filter {
+                        match match_filter {
+                            MatchFilter::Failure => {
+                                if job.result != "testfailed" && job.result != "busted" {
+                                    return false;
+                                }
+                            }
+                            MatchFilter::Success => {
+                                if job.result != "success" {
+                                    return false;
+                                }
+                            }
+                            MatchFilter::All => {}
+                        }
+                    }
+
+                    if let Some(filter_pattern) = &args.filter {
+                        if !job.job_type_name.contains(filter_pattern) {
+                            return false;
+                        }
+                    }
+
+                    if let Some(platform_regex) = &platform_regex {
+                        if !platform_regex.is_match(&job.platform) {
+                            return false;
+                        }
+                    }
+
+                    if let Some(min_duration) = args.duration_min {
+                        if !job
+                            .duration
+                            .is_some_and(|duration| duration >= min_duration)
+                        {
+                            return false;
+                        }
+                    }
+
+                    args.include_intermittent || job.failure_classification_id != Some(4)
+                })
+                .cloned()
+                .collect();
+
+            PushJobs {
+                push: push_jobs.push.clone(),
+                jobs,
+            }
+        })
+        .collect();
+
+    Ok(filtered)
+}
+
+async fn fetch_observations_for_jobs(
+    client: Arc<Client>,
+    repo: &str,
+    jobs: Vec<(PushRef, Job)>,
+    message: &'static str,
+) -> Result<Vec<JobObservation>> {
+    let pb = ProgressBar::new(jobs.len() as u64);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{bar:40.cyan/blue} {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("=>-"),
+    );
+    pb.set_message(message);
+    let pb = Arc::new(pb);
+
+    let observations = stream::iter(jobs)
+        .map(|(push, job)| {
+            let client = Arc::clone(&client);
+            let repo = repo.to_string();
+            let pb = Arc::clone(&pb);
+            async move {
+                let result = fetch_job_details_with_errors(&client, &repo, job).await;
+                pb.inc(1);
+                result.map(|(job, errors)| JobObservation { push, job, errors })
+            }
+        })
+        .buffer_unordered(10)
+        .collect::<Vec<_>>()
+        .await
+        .into_iter()
+        .filter_map(|result| match result {
+            Ok(observation) => Some(observation),
+            Err(err) => {
+                eprintln!("Failed to fetch job details: {}", err);
+                None
+            }
+        })
+        .collect();
+
+    pb.finish_with_message("Completed fetching job details");
+    Ok(observations)
+}
+
+fn failed_jobs_from_pushes(push_jobs: &[PushJobs]) -> Vec<(PushRef, Job)> {
+    push_jobs
+        .iter()
+        .flat_map(|push_jobs| {
+            push_jobs
+                .jobs
+                .iter()
+                .filter(|job| job.result == "testfailed" || job.result == "busted")
+                .cloned()
+                .map(|job| (push_jobs.push.clone(), job))
+        })
+        .collect()
+}
+
+fn all_jobs_from_pushes(push_jobs: &[PushJobs]) -> Vec<(PushRef, Job)> {
+    push_jobs
+        .iter()
+        .flat_map(|push_jobs| {
+            push_jobs
+                .jobs
+                .iter()
+                .cloned()
+                .map(|job| (push_jobs.push.clone(), job))
+        })
+        .collect()
+}
+
+async fn run_range_mode(client: Client, repo: String, args: &Args, pb: ProgressBar) -> Result<()> {
+    pb.set_message("Resolving range");
+    let pushes = resolve_range_pushes(&client, &repo, args).await?;
+    if pushes.is_empty() {
+        pb.finish_with_message("No pushes found in range");
+        println!("No pushes found in range");
+        return Ok(());
+    }
+
+    pb.set_message(format!("Fetching jobs for {} pushes", pushes.len()));
+    let push_jobs = fetch_jobs_by_push(&client, &pushes).await?;
+    pb.finish_with_message("Fetched range jobs");
+
+    let client = Arc::new(client);
+
+    if args.suspects {
+        let filtered_push_jobs = filter_push_jobs(&push_jobs, args, None)?;
+        let failed_jobs = failed_jobs_from_pushes(&filtered_push_jobs);
+        let observations =
+            fetch_observations_for_jobs(client, &repo, failed_jobs, "Fetching failed job details")
+                .await?;
+        let analysis = analyze_range_suspects(&repo, &filtered_push_jobs, &observations);
+
+        if args.json {
+            println!("{}", format_range_suspects_json(&analysis)?);
+        } else {
+            println!("{}", format_range_suspects_markdown(&analysis));
+        }
+    } else {
+        let filtered_push_jobs =
+            filter_push_jobs(&push_jobs, args, Some(args.match_filter.clone()))?;
+        let jobs = all_jobs_from_pushes(&filtered_push_jobs);
+        if jobs.is_empty() {
+            println!("No jobs found matching the specified criteria");
+            return Ok(());
+        }
+
+        let observations =
+            fetch_observations_for_jobs(client, &repo, jobs, "Fetching range job details").await?;
+        let pushes = filtered_push_jobs
+            .iter()
+            .map(|push_jobs| {
+                let jobs = observations
+                    .iter()
+                    .filter(|observation| observation.push.id == push_jobs.push.id)
+                    .map(|observation| JobWithLogs {
+                        job: observation.job.clone(),
+                        errors: observation.errors.clone(),
+                        log_matches: vec![],
+                        log_dir: None,
+                    })
+                    .collect();
+
+                RangePushSummary {
+                    push: push_jobs.push.clone(),
+                    jobs,
+                }
+            })
+            .collect();
+        let summary = RangeJobSummary { repo, pushes };
+
+        if args.json {
+            println!("{}", format_range_json(&summary)?);
+        } else {
+            println!("{}", format_range_markdown_summary(&summary));
+        }
+    }
+
+    Ok(())
 }
 
 #[tokio::main]
@@ -82,9 +378,16 @@ async fn run() -> Result<()> {
     let mut args = Args::parse();
     let match_filter_was_explicit = std::env::args_os()
         .any(|arg| arg == "--match-filter" || arg.to_string_lossy().starts_with("--match-filter="));
+    validate_range_args(&args)?;
 
-    if !args.use_cache && args.input.is_none() && args.similar_history.is_none() {
-        anyhow::bail!("INPUT is required when not using --use-cache or --similar-history");
+    if !args.use_cache
+        && args.input.is_none()
+        && args.similar_history.is_none()
+        && !has_range_request(&args)
+    {
+        anyhow::bail!(
+            "INPUT is required when not using --use-cache, --similar-history, or range analysis"
+        );
     }
 
     if args.notify && !args.watch && !args.stream_failures {
@@ -239,14 +542,20 @@ async fn run() -> Result<()> {
     );
 
     pb.set_message("Resolving push");
-    let input = args.input.as_ref().unwrap();
     if args.repo.is_none() {
-        if let Some(repo_from_url) = extract_repo_from_url(input) {
-            args.repo = Some(repo_from_url);
+        if let Some(input) = args.input.as_ref() {
+            if let Some(repo_from_url) = extract_repo_from_url(input) {
+                args.repo = Some(repo_from_url);
+            }
         }
     }
-    let repo = args.repo.unwrap_or_else(|| "try".to_string());
+    let repo = args.repo.clone().unwrap_or_else(|| "try".to_string());
 
+    if has_range_request(&args) {
+        return run_range_mode(client, repo, &args, pb).await;
+    }
+
+    let input = args.input.as_ref().unwrap();
     let (revision, push_ids) = if let Some(lando_commit_id) = extract_lando_commit_id(input) {
         let lando_instance = extract_lando_instance(input);
         let revision =
