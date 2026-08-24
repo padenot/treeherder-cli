@@ -36,6 +36,8 @@ impl From<&PushResult> for PushRef {
 pub struct JobsResponse {
     pub results: Vec<Vec<serde_json::Value>>,
     pub job_property_names: Vec<String>,
+    #[serde(default)]
+    pub next: Option<String>,
 }
 
 #[derive(Deserialize, Serialize, Debug, Clone)]
