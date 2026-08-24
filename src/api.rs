@@ -221,15 +221,35 @@ pub async fn fetch_jobs_multi(client: &Client, push_ids: &[u64]) -> Result<Vec<J
     Ok(all)
 }
 
+const MAX_JOB_PAGES: usize = 100;
+
 pub async fn fetch_jobs(client: &Client, push_id: u64) -> Result<Vec<Job>> {
-    let url = format!(
+    let mut url = format!(
         "https://treeherder.mozilla.org/api/jobs/?push_id={}",
         push_id
     );
 
-    let response: JobsResponse = client.get(&url).send().await?.json().await?;
+    let mut jobs = Vec::new();
+    for _ in 0..MAX_JOB_PAGES {
+        let response: JobsResponse = client.get(&url).send().await?.json().await?;
+        let next = response.next.clone();
+        jobs.extend(parse_jobs_page(response));
 
-    // Build field name → index mapping from job_property_names
+        match next {
+            Some(next_url) => url = next_url,
+            None => return Ok(jobs),
+        }
+    }
+
+    anyhow::bail!(
+        "push {} has more than {} pages of jobs; refusing to report a partial result",
+        push_id,
+        MAX_JOB_PAGES
+    )
+}
+
+fn parse_jobs_page(response: JobsResponse) -> Vec<Job> {
+    // Build field name -> index mapping from job_property_names
     let field_map: HashMap<&str, usize> = response
         .job_property_names
         .iter()
@@ -238,8 +258,7 @@ pub async fn fetch_jobs(client: &Client, push_id: u64) -> Result<Vec<Job>> {
         .collect();
 
     let mut jobs = Vec::new();
-    for job_array in response.results {
-        // Helper to safely get field by name for this specific job_array
+    for job_array in &response.results {
         let get_field = |field_name: &str| -> Option<&serde_json::Value> {
             field_map
                 .get(field_name)
@@ -296,7 +315,7 @@ pub async fn fetch_jobs(client: &Client, push_id: u64) -> Result<Vec<Job>> {
         }
     }
 
-    Ok(jobs)
+    jobs
 }
 
 pub async fn fetch_job_details(client: &Client, repo: &str, job_id: u64) -> Result<JobDetail> {
@@ -716,6 +735,60 @@ mod tests {
     use super::*;
     use crate::range::{analyze_range_suspects, parse_revision_range};
     use reqwest::Client;
+
+    fn jobs_page(next: Option<&str>, ids: &[u64]) -> JobsResponse {
+        let results = ids
+            .iter()
+            .map(|id| {
+                serde_json::json!([id, "test-linux64/opt", "T", "linux64", "opt", "testfailed", "completed"])
+                    .as_array()
+                    .unwrap()
+                    .clone()
+            })
+            .collect();
+        JobsResponse {
+            results,
+            job_property_names: vec![
+                "id".into(),
+                "job_type_name".into(),
+                "job_type_symbol".into(),
+                "platform".into(),
+                "platform_option".into(),
+                "result".into(),
+                "state".into(),
+            ],
+            next: next.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn test_parse_jobs_page_extracts_all_results() {
+        let jobs = parse_jobs_page(jobs_page(None, &[1, 2, 3]));
+        assert_eq!(
+            jobs.iter().map(|job| job.id).collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+        assert_eq!(jobs[0].result, "testfailed");
+    }
+
+    #[test]
+    fn test_pages_accumulate_across_next_links() {
+        let mut all = parse_jobs_page(jobs_page(Some("https://example.com/?page=2"), &[1, 2]));
+        all.extend(parse_jobs_page(jobs_page(None, &[3])));
+        assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn test_jobs_response_deserializes_next_link() {
+        let response: JobsResponse = serde_json::from_str(
+            r#"{"count": 4507, "next": "https://treeherder.mozilla.org/api/jobs/?page=2&push_id=1", "previous": null, "results": [], "job_property_names": []}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            response.next.as_deref(),
+            Some("https://treeherder.mozilla.org/api/jobs/?page=2&push_id=1")
+        );
+    }
 
     #[test]
     fn test_extract_lando_commit_id_from_url_with_lando_instance() {
