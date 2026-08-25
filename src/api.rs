@@ -740,10 +740,18 @@ mod tests {
         let results = ids
             .iter()
             .map(|id| {
-                serde_json::json!([id, "test-linux64/opt", "T", "linux64", "opt", "testfailed", "completed"])
-                    .as_array()
-                    .unwrap()
-                    .clone()
+                serde_json::json!([
+                    id,
+                    "test-linux64/opt",
+                    "T",
+                    "linux64",
+                    "opt",
+                    "testfailed",
+                    "completed"
+                ])
+                .as_array()
+                .unwrap()
+                .clone()
             })
             .collect();
         JobsResponse {
