@@ -190,9 +190,8 @@ fn filter_push_jobs(
                     }
 
                     if let Some(min_duration) = args.duration_min {
-                        if !job
-                            .duration
-                            .is_some_and(|duration| duration >= min_duration)
+                        if job
+                            .duration.is_none_or(|duration| duration < min_duration)
                         {
                             return false;
                         }

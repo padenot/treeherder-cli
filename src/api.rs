@@ -845,7 +845,7 @@ mod tests {
                 job.job_type_name.contains(&job_filter)
                     && platform_filter
                         .as_ref()
-                        .map_or(true, |platform| job.platform == *platform)
+                        .is_none_or(|platform| job.platform == *platform)
             });
         }
 
