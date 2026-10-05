@@ -590,7 +590,7 @@ async fn run() -> Result<()> {
     }
 
     if let Some(job_id) = args.similar_history {
-        let client = Client::new();
+        let client = build_client()?;
         let pb = ProgressBar::new_spinner();
         pb.set_style(
             ProgressStyle::default_spinner()
@@ -693,7 +693,7 @@ async fn run() -> Result<()> {
         return Ok(());
     }
 
-    let client = Client::new();
+    let client = build_client()?;
 
     let pb = ProgressBar::new_spinner();
     pb.set_style(
@@ -1410,6 +1410,12 @@ async fn run() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn build_client() -> Result<Client> {
+    Ok(Client::builder()
+        .user_agent(concat!("treeherder-cli/", env!("CARGO_PKG_VERSION")))
+        .build()?)
 }
 
 #[cfg(test)]
