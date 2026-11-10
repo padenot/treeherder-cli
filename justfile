@@ -4,7 +4,11 @@ release version:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    sed -i '' "s/^version = \".*\"/version = \"{{version}}\"/" Cargo.toml
+    : "${CARGO_REGISTRY_TOKEN:?Set CARGO_REGISTRY_TOKEN before releasing}"
+
+    sed -i.bak "s/^version = \".*\"/version = \"{{version}}\"/" Cargo.toml
+
+    rm Cargo.toml.bak
 
     cargo fmt
     cargo clippy --all-targets --all-features
