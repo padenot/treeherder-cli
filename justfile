@@ -1,10 +1,8 @@
 # Release a new version: just release 0.19.0
-# Requires CARGO_REGISTRY_TOKEN env var.
+# Crates and binaries are published by GitHub Actions on tag push.
 release version:
     #!/usr/bin/env bash
     set -euo pipefail
-
-    : "${CARGO_REGISTRY_TOKEN:?Set CARGO_REGISTRY_TOKEN before releasing}"
 
     sed -i.bak "s/^version = \".*\"/version = \"{{version}}\"/" Cargo.toml
 
@@ -20,6 +18,4 @@ release version:
     git push origin main
     git push origin "v{{version}}"
 
-    CARGO_REGISTRY_TOKEN="${CARGO_REGISTRY_TOKEN}" cargo publish
-
-    echo "Binaries will be built and attached to the GitHub release by CI on tag push."
+    echo "GitHub Actions will publish the crate and attach binaries to the GitHub release."
