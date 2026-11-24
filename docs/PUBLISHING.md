@@ -56,8 +56,8 @@ Open [Actions](https://github.com/padenot/treeherder-cli/actions) and check
 a temporary crates.io token, and verifies each package before uploading it.
 
 The separate **Release** workflow creates the GitHub release with the tag's notes
-and attaches CLI binaries for Linux (glibc and musl, x86_64 and aarch64), macOS
-and Windows. Check both workflows; a successful crate upload does not guarantee
+and attaches CLI binaries for Linux (glibc and musl, x86_64 and aarch64), macOS,
+and Windows (x86_64 and ARM64). Check both workflows; a successful crate upload does not guarantee
 every binary was built.
 
 Confirm the new version on:

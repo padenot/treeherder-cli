@@ -43,6 +43,10 @@ jobs:
             target: x86_64-pc-windows-msvc
             archive: zip
             binary: treeherder-cli.exe
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            archive: zip
+            binary: treeherder-cli.exe
 
     steps:
       - uses: actions/checkout@v6
