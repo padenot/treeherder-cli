@@ -1,6 +1,7 @@
 #[allow(dead_code)] // wired up by the --cancel/--retrigger/--add-jobs commit
 mod actions;
 mod api;
+mod auth;
 mod cache;
 mod cli;
 mod history;
@@ -13,7 +14,7 @@ use anyhow::Result;
 use api::*;
 use cache::*;
 use clap::Parser;
-use cli::{Args, MatchFilter};
+use cli::{Args, Command, MatchFilter};
 use futures::stream::{self, StreamExt};
 use history::*;
 use indicatif::{ProgressBar, ProgressStyle};
@@ -30,13 +31,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tempfile::TempDir;
 use util::*;
-
-fn is_llm_environment() -> bool {
-    std::env::var("CLAUDECODE").is_ok()
-        || std::env::var("CODEX_SANDBOX").is_ok()
-        || std::env::var("GEMINI_CLI").is_ok()
-        || std::env::var("OPENCODE").is_ok()
-}
 
 fn print_llm_help() {
     print!(
@@ -541,7 +535,13 @@ async fn main() -> Result<()> {
         moz_cli_version_check::VersionChecker::new("treeherder-cli", env!("CARGO_PKG_VERSION"));
     version_checker.check_async();
 
-    if is_llm_environment() && std::env::args().any(|arg| arg == "--help" || arg == "-h") {
+    let mut argv = std::env::args_os().skip(1);
+    if is_llm_environment()
+        && argv
+            .next()
+            .is_some_and(|arg| arg == "--help" || arg == "-h")
+        && argv.next().is_none()
+    {
         print_llm_help();
         version_checker.print_warning();
         return Ok(());
@@ -556,6 +556,13 @@ async fn main() -> Result<()> {
 
 async fn run() -> Result<()> {
     let mut args = Args::parse();
+    if let Some(command) = args.command.take() {
+        return match command {
+            Command::Login { level, days } => auth::login(level, days).await,
+            Command::Logout => auth::logout(),
+            Command::Status => auth::status().await,
+        };
+    }
     let match_filter_was_explicit = std::env::args_os()
         .any(|arg| arg == "--match-filter" || arg.to_string_lossy().starts_with("--match-filter="));
     validate_range_args(&args)?;

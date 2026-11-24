@@ -1,4 +1,5 @@
-use clap::{Parser, ValueEnum};
+use clap::builder::TypedValueParser;
+use clap::{Parser, Subcommand, ValueEnum};
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum MatchFilter {
@@ -12,13 +13,35 @@ pub enum GroupBy {
     Test,
 }
 
+#[derive(Subcommand, Debug)]
+pub enum Command {
+    /// Sign in to Taskcluster (opens a browser) to allow cancelling/retriggering jobs
+    Login {
+        #[arg(
+            long,
+            default_value_t = 1,
+            value_parser = clap::builder::PossibleValuesParser::new(["1", "3"]).map(|s| s.parse::<u8>().unwrap())
+        )]
+        level: u8,
+        #[arg(long, default_value_t = 90, value_parser = clap::value_parser!(u32).range(1..))]
+        days: u32,
+    },
+    /// Forget the stored Taskcluster credentials
+    Logout,
+    /// Show the current Taskcluster login
+    Status,
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "treeherder-cli",
     about = "Fetch and summarize Treeherder test results for Firefox developers",
-    version
+    version,
+    args_conflicts_with_subcommands = true
 )]
 pub struct Args {
+    #[command(subcommand)]
+    pub command: Option<Command>,
     #[arg(
         help = "Treeherder URL, revision hash, or Lando commit ID (not needed with --use-cache)"
     )]
