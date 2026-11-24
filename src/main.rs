@@ -1,3 +1,5 @@
+#[allow(dead_code)] // wired up by the --cancel/--retrigger/--add-jobs commit
+mod actions;
 mod api;
 mod cache;
 mod cli;
