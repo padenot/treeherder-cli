@@ -1,16 +1,11 @@
+mod common;
+
 use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
-use std::process::Command;
-
-fn cli() -> Command {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
-    cmd.env_remove("CLAUDECODE");
-    cmd
-}
 
 #[test]
 fn test_history_flags_exist() {
-    cli()
+    common::treeherder_cli()
         .arg("--help")
         .assert()
         .success()
@@ -20,7 +15,7 @@ fn test_history_flags_exist() {
 
 #[test]
 fn test_group_history_requires_input() {
-    cli()
+    common::treeherder_cli()
         .args([
             "--group-history",
             "dom/tests/xpcshell.toml",
@@ -34,7 +29,7 @@ fn test_group_history_requires_input() {
 
 #[test]
 fn test_group_history_caps_lookback() {
-    cli()
+    common::treeherder_cli()
         .args([
             "abc123",
             "--repo",
@@ -51,7 +46,7 @@ fn test_group_history_caps_lookback() {
 
 #[test]
 fn test_group_history_rejects_range() {
-    cli()
+    common::treeherder_cli()
         .args([
             "abc123",
             "--group-history",
@@ -66,7 +61,7 @@ fn test_group_history_rejects_range() {
 
 #[test]
 fn test_test_flag_requires_suspects() {
-    cli()
+    common::treeherder_cli()
         .args(["abc123", "--lookback", "5", "--test", "test_foo"])
         .assert()
         .failure()

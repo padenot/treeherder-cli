@@ -1,10 +1,11 @@
+mod common;
+
 use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
-use std::process::Command;
 
 #[test]
 fn test_group_by_flag_exists() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
 
     cmd.assert()
@@ -14,7 +15,7 @@ fn test_group_by_flag_exists() {
 
 #[test]
 fn test_group_by_test_value() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
 
     cmd.assert().success().stdout(predicate::str::contains(
@@ -25,7 +26,7 @@ fn test_group_by_test_value() {
 #[test]
 #[ignore] // Ignore by default as it requires network access
 fn test_group_by_json_output_structure() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--repo")
         .arg("try")
         .arg("--group-by")
@@ -62,7 +63,7 @@ fn test_group_by_json_output_structure() {
 
 #[test]
 fn test_duration_min_flag_exists() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
 
     cmd.assert()
@@ -72,7 +73,7 @@ fn test_duration_min_flag_exists() {
 
 #[test]
 fn test_duration_min_help_text() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
 
     cmd.assert().success().stdout(predicate::str::contains(
@@ -84,7 +85,7 @@ fn test_duration_min_help_text() {
 #[ignore] // Ignore by default as it requires network access
 fn test_duration_min_filters_short_jobs() {
     // Filter to show only jobs that took more than 60 seconds
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--repo")
         .arg("try")
         .arg("--duration-min")
@@ -120,7 +121,7 @@ fn test_duration_min_filters_short_jobs() {
 #[ignore] // Ignore by default as it requires network access
 fn test_duration_min_high_value_returns_fewer_jobs() {
     // Get all jobs first
-    let mut cmd_all = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd_all = common::treeherder_cli();
     cmd_all
         .arg("--repo")
         .arg("try")
@@ -132,7 +133,7 @@ fn test_duration_min_high_value_returns_fewer_jobs() {
     let output_all = cmd_all.output().unwrap();
 
     // Get jobs with duration filter
-    let mut cmd_filtered = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd_filtered = common::treeherder_cli();
     cmd_filtered
         .arg("--repo")
         .arg("try")
