@@ -182,4 +182,38 @@ pub struct Args {
         help = "Show N pushes before and after this push (useful for bisecting autoland failures)"
     )]
     pub context: Option<u64>,
+    #[arg(
+        long,
+        conflicts_with = "retrigger",
+        help = "Cancel the pending/running jobs matching --filter/--platform (needs `treeherder-cli login`)"
+    )]
+    pub cancel: bool,
+    #[arg(
+        long,
+        conflicts_with_all = ["cancel", "retrigger"],
+        help = "Cancel every job of the push (needs `treeherder-cli login`)"
+    )]
+    pub cancel_push: bool,
+    #[arg(
+        long,
+        help = "Retrigger jobs matching --filter/--platform/--match-filter (default: failures and exceptions) (needs `treeherder-cli login`)"
+    )]
+    pub retrigger: bool,
+    #[arg(
+        long,
+        default_value_t = 1,
+        value_parser = clap::value_parser!(u32).range(1..),
+        help = "How many copies to schedule with --retrigger"
+    )]
+    pub times: u32,
+    #[arg(
+        long,
+        help = "Allow plans above 100 total runs, or above 100 per-job cancel actions with --cancel"
+    )]
+    pub allow_many_runs: bool,
+    #[arg(
+        long,
+        help = "Show what --cancel/--cancel-push/--retrigger would do without doing it"
+    )]
+    pub dry_run: bool,
 }

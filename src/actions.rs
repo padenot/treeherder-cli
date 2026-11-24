@@ -7,7 +7,7 @@ use crate::util::{scope_satisfies, write_atomic};
 use anyhow::{anyhow, bail, Context, Result};
 use reqwest::{Client, StatusCode};
 use serde::de::IgnoredAny;
-use serde::{de::DeserializeOwned, Deserialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
@@ -17,6 +17,7 @@ use std::time::{Duration, SystemTime};
 
 const CACHE_MAX_AGE: Duration = Duration::from_secs(30 * 24 * 60 * 60);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
+pub const ACTION_CONCURRENCY: usize = 10;
 
 #[derive(Debug, Deserialize)]
 pub struct ActionsJson {
@@ -244,6 +245,7 @@ fn parse_actions(text: &str) -> Result<ActionsJson> {
     Ok(actions)
 }
 
+#[allow(dead_code)] // Used by the --add-jobs commit.
 pub async fn fetch_runnable_labels(client: &Client, decision: &DecisionRun) -> Result<Vec<String>> {
     let path = decision.cache_path("runnable");
     if let Some(labels) = path
@@ -266,11 +268,69 @@ pub async fn fetch_runnable_labels(client: &Client, decision: &DecisionRun) -> R
     Ok(labels)
 }
 
-fn is_task_id(id: &str) -> bool {
-    id.len() == 22
-        && id
-            .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+async fn artifact<T: DeserializeOwned>(
+    client: &Client,
+    task_id: &str,
+    name: &str,
+) -> Result<Option<T>> {
+    anyhow::ensure!(is_task_id(task_id), "Invalid Taskcluster task ID {task_id}");
+    let url = format!("{TC_ROOT_URL}/api/queue/v1/task/{task_id}/artifacts/public/{name}");
+    let response = client.get(url).timeout(REQUEST_TIMEOUT).send().await?;
+    if response.status() == StatusCode::NOT_FOUND {
+        return Ok(None);
+    }
+    Ok(Some(response.error_for_status()?.json().await?))
+}
+
+pub struct CreatedTasks {
+    pub ids: BTreeSet<String>,
+    pub expected_count: usize,
+}
+
+impl CreatedTasks {
+    pub fn all_listed(&self) -> bool {
+        self.ids.len() >= self.expected_count
+    }
+
+    pub fn include_group_children(&mut self, group: Vec<GroupTask>, action_task_id: &str) {
+        self.ids.extend(
+            group
+                .into_iter()
+                .filter(|task| task.parent() == Some(action_task_id))
+                .map(|task| task.status.task_id),
+        );
+    }
+}
+
+#[derive(Deserialize)]
+struct CreatedGraphTask {
+    attributes: CreatedAttributes,
+}
+
+#[derive(Deserialize)]
+struct CreatedAttributes {
+    task_duplicates: Option<usize>,
+}
+
+pub async fn fetch_created_tasks(
+    client: &Client,
+    action_task_id: &str,
+) -> Result<Option<CreatedTasks>> {
+    let graph: Option<BTreeMap<String, CreatedGraphTask>> =
+        artifact(client, action_task_id, "task-graph.json").await?;
+    graph.map(created_tasks).transpose()
+}
+
+fn created_tasks(graph: BTreeMap<String, CreatedGraphTask>) -> Result<CreatedTasks> {
+    let expected_count = graph.values().try_fold(0usize, |sum, task| {
+        // Queue creation submits the task once, then allocates fresh IDs for copies.
+        sum.checked_add(task.attributes.task_duplicates.unwrap_or(1).max(1))
+            .context("task graph lists too many copies")
+    })?;
+    Ok(CreatedTasks {
+        ids: graph.into_keys().collect(),
+        expected_count,
+    })
 }
 
 /// The tags of each task, keyed by task ID.
@@ -309,6 +369,13 @@ async fn fetch_task_definition(client: &Client, task_id: &str) -> Result<TaskDef
         .await?)
 }
 
+fn is_task_id(id: &str) -> bool {
+    id.len() == 22
+        && id
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
 pub async fn verify_action_hooks<'a>(
     client: &Client,
     decision_task_id: &str,
@@ -335,6 +402,88 @@ pub async fn verify_action_hooks<'a>(
         );
     }
     Ok(())
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum TaskState {
+    Unscheduled,
+    Pending,
+    Running,
+    Completed,
+    Failed,
+    Exception,
+}
+
+impl TaskState {
+    pub fn is_terminal(self) -> bool {
+        matches!(self, Self::Completed | Self::Failed | Self::Exception)
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskStatus {
+    pub task_id: String,
+    pub state: TaskState,
+    #[serde(default)]
+    runs: Vec<TaskRun>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TaskRun {
+    reason_created: String,
+    reason_resolved: Option<String>,
+}
+
+impl TaskStatus {
+    pub fn can_rerun(&self) -> bool {
+        matches!(self.state, TaskState::Failed | TaskState::Exception)
+    }
+
+    pub fn was_canceled(&self) -> bool {
+        self.state == TaskState::Exception
+            && self
+                .runs
+                .last()
+                .and_then(|run| run.reason_resolved.as_deref())
+                == Some("canceled")
+    }
+
+    pub fn reruns(&self) -> usize {
+        self.runs
+            .iter()
+            .filter(|run| run.reason_created == "rerun")
+            .count()
+    }
+}
+
+#[derive(Deserialize)]
+pub struct GroupTask {
+    pub status: TaskStatus,
+    task: GroupTaskDefinition,
+}
+
+#[derive(Deserialize)]
+struct GroupTaskDefinition {
+    extra: Option<GroupTaskExtra>,
+}
+
+#[derive(Deserialize)]
+struct GroupTaskExtra {
+    parent: Option<String>,
+}
+
+impl GroupTask {
+    fn parent(&self) -> Option<&str> {
+        self.task.extra.as_ref()?.parent.as_deref()
+    }
+}
+
+#[derive(Deserialize)]
+struct StatusResponse {
+    status: TaskStatus,
 }
 
 /// One page of a Taskcluster list endpoint: listTaskGroup, tasks or statuses.
@@ -378,6 +527,33 @@ fn match_requested<T>(
         bail!("Taskcluster has no task {missing}");
     }
     Ok(items)
+}
+
+pub async fn fetch_task_statuses<'a>(
+    queue: &taskcluster::Queue,
+    task_ids: impl IntoIterator<Item = &'a str>,
+) -> Result<Vec<TaskStatus>> {
+    let task_ids: BTreeSet<&str> = task_ids.into_iter().collect();
+    if task_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+    let payload = json!({ "taskIds": task_ids });
+    let payload = &payload;
+    let entries: Vec<StatusResponse> =
+        collect_pages(|token| async move { queue.statuses(payload, token.as_deref(), None).await })
+            .await?;
+    let statuses = entries.into_iter().map(|entry| entry.status).collect();
+    match_requested(&task_ids, statuses, |status| &status.task_id)
+}
+
+pub async fn fetch_task_group(
+    queue: &taskcluster::Queue,
+    group_id: &str,
+) -> Result<Vec<GroupTask>> {
+    collect_pages(
+        |token| async move { queue.listTaskGroup(group_id, token.as_deref(), None).await },
+    )
+    .await
 }
 
 impl ActionsJson {
@@ -579,6 +755,38 @@ mod tests {
         assert!(!scope_satisfies("hooks:trigger-hook:*", &required));
     }
 
+    #[test]
+    fn graph_watch_requires_extra_copies_from_the_same_action() {
+        let graph = serde_json::from_value(json!({
+            "first": { "attributes": { "task_duplicates": 2 } },
+            "dependency": { "attributes": {} }
+        }))
+        .unwrap();
+        let mut created = created_tasks(graph).unwrap();
+        assert_eq!(created.expected_count, 3);
+        let entry = |task_id, parent| {
+            serde_json::from_value(json!({
+                "status": { "taskId": task_id, "state": "pending" },
+                "task": { "extra": { "parent": parent } }
+            }))
+            .unwrap()
+        };
+        created.include_group_children(
+            vec![
+                entry("unrelated", "another-action"),
+                entry("first", "action"),
+            ],
+            "action",
+        );
+        assert!(!created.all_listed());
+        created.include_group_children(vec![entry("second", "action")], "action");
+        assert!(created.all_listed());
+        assert_eq!(
+            created.ids,
+            BTreeSet::from(["first".into(), "dependency".into(), "second".into()])
+        );
+    }
+
     fn task_tags() -> HashMap<String, String> {
         serde_json::from_str(TASK_TAGS_TRY).unwrap()
     }
@@ -709,6 +917,14 @@ mod tests {
         assert_eq!(cancel["user"]["taskGroupId"], DECISION_TASK);
         assert_eq!(cancel["user"]["taskId"], TASK);
         assert_eq!(cancel["user"]["input"], json!({}));
+
+        let rerun = actions
+            .find("rerun", Some(&tags))
+            .unwrap()
+            .render_payload(&actions.variables, DECISION_TASK, Some(TASK), json!({}))
+            .unwrap();
+        assert_eq!(rerun["decision"]["action"]["name"], "rerun");
+        assert_eq!(rerun["user"]["taskId"], TASK);
 
         let input = json!({
             "requests": [{"tasks": ["test-linux/opt-mochitest-plain-1"], "times": 2}]
