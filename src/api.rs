@@ -7,6 +7,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use url::Url;
 
+pub const TC_ROOT_URL: &str = "https://firefox-ci-tc.services.mozilla.com";
+
 pub fn extract_revision(input: &str) -> Result<String> {
     if input.starts_with("http") {
         let url = Url::parse(input)?;
@@ -401,8 +403,8 @@ pub async fn fetch_taskcluster_artifacts(
     retry_id: u64,
 ) -> Result<Vec<TaskclusterArtifact>> {
     let url = format!(
-        "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/{}/runs/{}/artifacts",
-        task_id, retry_id
+        "{}/api/queue/v1/task/{}/runs/{}/artifacts",
+        TC_ROOT_URL, task_id, retry_id
     );
 
     let response: TaskclusterArtifactsResponse = client.get(&url).send().await?.json().await?;
@@ -418,8 +420,8 @@ pub async fn download_artifact(
     output_dir: &Path,
 ) -> Result<PathBuf> {
     let url = format!(
-        "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/{}/runs/{}/artifacts/{}",
-        task_id, retry_id, artifact_name
+        "{}/api/queue/v1/task/{}/runs/{}/artifacts/{}",
+        TC_ROOT_URL, task_id, retry_id, artifact_name
     );
 
     let response = client.get(&url).send().await?;
@@ -691,7 +693,8 @@ pub async fn fetch_job_perf_data(client: &Client, repo: &str, job: &Job) -> Resu
         (job_detail.task_id, job_detail.retry_id)
     {
         let perf_url = format!(
-            "https://firefox-ci-tc.services.mozilla.com/api/queue/v1/task/{}/runs/{}/artifacts/public/test_info/perfherder-data-resource-usage.json",
+            "{}/api/queue/v1/task/{}/runs/{}/artifacts/public/test_info/perfherder-data-resource-usage.json",
+            TC_ROOT_URL,
             task_id, retry_id
         );
 
