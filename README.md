@@ -40,9 +40,9 @@ treeherder-cli badrevision --repo autoland --lookback 20 --suspects --test test_
 treeherder-cli badrevision --repo autoland \
   --group-history docshell/test/unit/xpcshell.toml --lookback 150
 
-# Include successful jobs when checking whether a job ran
+# Check all results when looking for a job
 treeherder-cli badrevision --repo autoland \
-  --filter 'linux2404-64/opt-xpcshell' --match-filter all --json
+  --filter 'linux2404-64/opt-xpcshell' --json
 
 # History of similar jobs, starting from a job ID
 treeherder-cli --similar-history 543981186 --similar-count 100 --repo autoland
@@ -66,6 +66,9 @@ treeherder-cli a13b9fc22101 --stream-failures
 treeherder-cli a13b9fc22101 --fetch-logs --cache-dir ./logs
 treeherder-cli --use-cache --cache-dir ./logs --pattern ERROR
 ```
+
+An explicit `--filter` selects jobs of all results by default. Use `--match-filter`
+to restrict results; intermittents still require `--include-intermittent`.
 
 Other useful options: `--include-intermittent`, `--duration-min SECONDS`, `--perf`,
 `--all-crash-threads`, and `--full-stack`. Run `treeherder-cli --help` for details.

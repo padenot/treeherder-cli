@@ -59,7 +59,7 @@ pub struct Args {
     pub show_stack_traces: bool,
     #[arg(
         long,
-        help = "Only show jobs matching this regex pattern (applied to job_type_name)"
+        help = "Show all jobs matching this regex pattern (applied to job_type_name), unless --match-filter is specified"
     )]
     pub filter: Option<String>,
     #[arg(long, help = "Fetch all logs for each job")]
@@ -68,7 +68,7 @@ pub struct Args {
         long,
         value_enum,
         default_value = "failure",
-        help = "Filter which jobs to apply pattern matching on"
+        help = "Filter jobs by result (default: failure, or all with --filter)"
     )]
     pub match_filter: MatchFilter,
     #[arg(

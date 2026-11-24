@@ -356,6 +356,14 @@ impl JobSelector {
     }
 }
 
+fn effective_match_filter(args: &Args, explicit: bool) -> MatchFilter {
+    if !explicit && (args.filter.is_some() || args.download_artifacts) {
+        MatchFilter::All
+    } else {
+        args.match_filter.clone()
+    }
+}
+
 fn matches_result(job: &Job, match_filter: &MatchFilter) -> bool {
     match match_filter {
         MatchFilter::Failure => job.result == "testfailed" || job.result == "busted",
@@ -503,7 +511,13 @@ fn all_jobs_from_pushes(push_jobs: &[PushJobs]) -> Vec<(PushRef, Job)> {
         .collect()
 }
 
-async fn run_range_mode(client: Client, repo: String, args: &Args, pb: ProgressBar) -> Result<()> {
+async fn run_range_mode(
+    client: Client,
+    repo: String,
+    args: &Args,
+    pb: ProgressBar,
+    match_filter_was_explicit: bool,
+) -> Result<()> {
     pb.set_message("Resolving range");
     let pushes = resolve_range_pushes(&client, &repo, args).await?;
     if pushes.is_empty() {
@@ -542,8 +556,11 @@ async fn run_range_mode(client: Client, repo: String, args: &Args, pb: ProgressB
             println!("{}", format_range_suspects_markdown(&analysis));
         }
     } else {
-        let filtered_push_jobs =
-            filter_push_jobs(&push_jobs, &selector, Some(args.match_filter.clone()));
+        let filtered_push_jobs = filter_push_jobs(
+            &push_jobs,
+            &selector,
+            Some(effective_match_filter(args, match_filter_was_explicit)),
+        );
         let jobs = all_jobs_from_pushes(&filtered_push_jobs);
         if jobs.is_empty() {
             println!("No jobs found matching the specified criteria");
@@ -795,7 +812,12 @@ async fn run() -> Result<()> {
         let filtered_jobs: Vec<Job> = metadata
             .jobs
             .iter()
-            .filter(|job| matches_result(job, &args.match_filter) && selector.matches(job))
+            .filter(|job| {
+                matches_result(
+                    job,
+                    &effective_match_filter(&args, match_filter_was_explicit),
+                ) && selector.matches(job)
+            })
             .cloned()
             .collect();
 
@@ -868,7 +890,7 @@ async fn run() -> Result<()> {
     }
 
     if has_range_request(&args) {
-        return run_range_mode(client, repo, &args, pb).await;
+        return run_range_mode(client, repo, &args, pb, match_filter_was_explicit).await;
     }
 
     let selector = JobSelector::from_args(&args)?;
@@ -1178,11 +1200,7 @@ async fn run() -> Result<()> {
         }
     }
 
-    let effective_match_filter = if args.download_artifacts && !match_filter_was_explicit {
-        MatchFilter::All
-    } else {
-        args.match_filter.clone()
-    };
+    let effective_match_filter = effective_match_filter(&args, match_filter_was_explicit);
 
     let success_count = all_jobs
         .iter()
@@ -2487,6 +2505,55 @@ mod tests {
             platform: platform.map(|p| Regex::new(p).unwrap()),
             duration_min: None,
             include_intermittent: false,
+        }
+    }
+
+    #[test]
+    fn explicit_name_filter_includes_all_results_unless_match_filter_is_set() {
+        for (arguments, expected) in [
+            (vec!["abc"], vec!["testfailed"]),
+            (
+                vec!["abc", "--filter", "macosx.*gtest", "--include-intermittent"],
+                vec!["testfailed", "success", "unknown", "pending"],
+            ),
+            (
+                vec![
+                    "abc",
+                    "--filter",
+                    "macosx.*gtest",
+                    "--match-filter",
+                    "failure",
+                ],
+                vec!["testfailed"],
+            ),
+            (
+                vec![
+                    "abc",
+                    "--filter",
+                    "macosx.*gtest",
+                    "--match-filter",
+                    "success",
+                ],
+                vec!["success"],
+            ),
+        ] {
+            let matches = Args::command()
+                .try_get_matches_from(std::iter::once("treeherder-cli").chain(arguments))
+                .unwrap();
+            let explicit = matches.value_source("match_filter") == Some(ValueSource::CommandLine);
+            let args = Args::from_arg_matches(&matches).unwrap();
+            let selector = JobSelector::from_args(&args).unwrap();
+            let jobs = ["testfailed", "success", "unknown", "pending"]
+                .map(|result| job("macosx-opt-gtest", "macosx", result, None));
+            let selected: Vec<_> = jobs
+                .iter()
+                .filter(|job| {
+                    selector.matches(job)
+                        && matches_result(job, &effective_match_filter(&args, explicit))
+                })
+                .map(|job| job.result.as_str())
+                .collect();
+            assert_eq!(selected, expected);
         }
     }
 
