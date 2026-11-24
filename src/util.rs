@@ -1,6 +1,29 @@
 use crate::models::Job;
-use anyhow::Result;
+use anyhow::{Context, Result};
 use notify_rust::Notification;
+use std::io::Write;
+use std::path::Path;
+
+pub fn write_atomic(path: &Path, contents: &[u8], sync: bool) -> Result<()> {
+    let dir = path.parent().context("file has no parent directory")?;
+    std::fs::create_dir_all(dir).with_context(|| format!("creating {}", dir.display()))?;
+    let mut file = tempfile::NamedTempFile::new_in(dir)?;
+    file.write_all(contents)?;
+    if sync {
+        file.as_file().sync_all()?;
+    }
+    file.persist(path)
+        .map_err(|err| err.error)
+        .with_context(|| format!("replacing {}", path.display()))?;
+    Ok(())
+}
+
+pub fn scope_satisfies(granted: &str, required: &str) -> bool {
+    granted == required
+        || granted
+            .strip_suffix('*')
+            .is_some_and(|prefix| required.starts_with(prefix))
+}
 
 pub fn are_all_jobs_complete(jobs: &[Job]) -> bool {
     jobs.iter().all(|job| job.state == "completed")
