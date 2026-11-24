@@ -140,7 +140,8 @@ The tag must match the version in `Cargo.toml`. GitHub write access is enough fo
 routine releases; no local crates.io token is needed.
 
 See [Publishing](docs/PUBLISHING.md) for version updates, checks, tag commands,
-release verification, retries, and ownership. `just release VERSION` is optional.
+release verification, retries, and ownership. `just patch`, `just minor` or
+`just major` bumps the version, has Codex write the release notes, and pushes the tag.
 
 ## License
 

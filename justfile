@@ -1,21 +1,31 @@
-# Release a new version: just release 0.19.0
-# Crates and binaries are published by GitHub Actions on tag push.
+default:
+    @just --list
+
+# Formatting and lint results don't depend on the OS, so Windows only runs the tests.
+# Run the checks CI runs
+[unix]
+ci:
+    cargo fmt -- --check
+    cargo clippy --locked --all-targets --all-features -- -D warnings
+    cargo test --locked
+
+# Run the checks CI runs
+[windows]
+ci:
+    cargo test --locked
+
+# Release the next patch version (see docs/PUBLISHING.md)
+patch:
+    just release patch
+
+# Release the next minor version
+minor:
+    just release minor
+
+# Release the next major version
+major:
+    just release major
+
+# Bump major/minor/patch, or release an explicit version
 release version:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    sed -i.bak "s/^version = \".*\"/version = \"{{version}}\"/" Cargo.toml
-
-    rm Cargo.toml.bak
-
-    cargo fmt
-    cargo clippy --all-targets --all-features
-    cargo build --release
-
-    git add -A
-    git commit -m "Bump version to {{version}}"
-    git tag -a "v{{version}}" -m "Release v{{version}}"
-    git push origin main
-    git push origin "v{{version}}"
-
-    echo "GitHub Actions will publish the crate and attach binaries to the GitHub release."
+    bash scripts/release.sh "{{version}}"

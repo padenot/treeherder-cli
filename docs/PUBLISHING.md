@@ -1,8 +1,9 @@
 # Publishing treeherder-cli
 
-**Push a `vVERSION` tag to publish.** The tagged commit's Cargo version must match
-exactly; for example, `v0.3.3` must point to version `0.3.3`.
-GitHub Actions publishes `treeherder-cli` on crates.io and binaries on GitHub Releases.
+**Run `just patch`, `just minor` or `just major` on an up-to-date `main`.** It bumps
+the version, writes release notes, and pushes a `vVERSION` tag. GitHub Actions then
+publishes `treeherder-cli` on crates.io, and binaries with the release notes on
+GitHub Releases.
 
 ## Access
 
@@ -10,44 +11,43 @@ Accept your GitHub repository invitation before starting. Write access lets you
 push release tags and rerun workflows. Routine releases need no local registry
 token, crates.io ownership, or access to another maintainer's machine.
 
-## Prepare a version
+## Release
 
-Start with a clean working tree on an up-to-date `main`:
+Start with a clean working tree on an up-to-date `main` whose CI has passed:
 
 ```sh
 git switch main
 git pull --ff-only
-git status --short
+just patch        # or: just minor, just major, just release 0.3.3
 ```
 
-Choose an unpublished version. The commands below use `0.3.3` as an example.
+The release needs the GitHub CLI (`gh`) and a signed-in Codex CLI (`codex`).
+`scripts/release.sh`:
 
-Update `[package].version` in `Cargo.toml`.
+1. Checks that `main` is clean and matches `origin/main`, that the version is new
+   and greater than the current one, and waits for CI on the commit to pass. CI
+   covers macOS and Windows, which the local checks don't.
+2. Has Codex write Markdown release notes from the commits since the previous tag.
+   The tree is untouched until this succeeds.
+3. Bumps `[package].version` in `Cargo.toml` and its `Cargo.lock` entry, then runs
+   `just ci` and a release build.
+4. Commits `Bump version to VERSION`, tags `vVERSION` with the notes as the tag
+   message, and pushes `main` and the tag.
 
-Refresh the root lockfile after the version edit, then run the checks:
+The tag push starts publication. There is no local `cargo publish` step.
 
-```sh
-cargo check
-cargo fmt -- --check
-cargo clippy --locked --all-targets --all-features -- -D warnings
-cargo test --locked
-```
-
-## Push the tag
+To release by hand instead, make the same version edit and checks, then push an
+annotated tag; its message becomes the GitHub release notes:
 
 ```sh
 release_version=0.3.3
-git add Cargo.toml Cargo.lock
-git commit -m "Release ${release_version}"
-git push origin main
-git tag -a "v${release_version}" -m "Release v${release_version}"
-git push origin "v${release_version}"
+git commit -am "Bump version to ${release_version}"
+git tag -a "v${release_version}" -F release-notes.md
+git push origin main "v${release_version}"
 ```
 
-The final tag push starts publication. There is no local `cargo publish` step.
-
-`just release VERSION` is an optional shortcut for version edits, a local build,
-commit, and tag push. It is not required to publish.
+The tagged commit's Cargo version must match the tag exactly; for example,
+`v0.3.3` must point to version `0.3.3`.
 
 ## Check the result
 
@@ -55,8 +55,10 @@ Open [Actions](https://github.com/padenot/treeherder-cli/actions) and check
 **Publish crates**. It validates the tag, runs formatting, Clippy and tests, obtains
 a temporary crates.io token, and verifies each package before uploading it.
 
-The separate **Release** workflow builds and attaches CLI binaries. Check both
-workflows; a successful crate upload does not guarantee every binary was built.
+The separate **Release** workflow creates the GitHub release with the tag's notes
+and attaches CLI binaries for Linux (glibc and musl, x86_64 and aarch64), macOS
+and Windows. Check both workflows; a successful crate upload does not guarantee
+every binary was built.
 
 Confirm the new version on:
 
@@ -66,18 +68,17 @@ Confirm the new version on:
 ## Retry a partial release
 
 If **Publish crates** failed without changing the release's source, select it in
-Actions, choose **Run workflow**, select the release tag, and set `dry_run` to
+Actions, choose **Run workflow**, enter the release tag, and set `dry_run` to
 `false`. With GitHub CLI, from this repository:
 
 ```sh
-release_tag=v0.3.3
-gh workflow run publish-crates.yml --ref "$release_tag" -f dry_run=false
+gh workflow run publish-crates.yml -f release_tag=v0.3.3 -f dry_run=false
 ```
 
-Already-published, non-yanked crate versions are skipped. This lets a retry
-continue after one package has uploaded. A yanked version causes a failure.
+An already-published, non-yanked version is skipped. A yanked version causes a
+failure.
 
-For failed binary or Python jobs, rerun the failed jobs in the **Release** workflow.
+For failed binary jobs, rerun the failed jobs in the **Release** workflow.
 
 If fixing the failure requires source or workflow changes, make a new commit and
 release version. Published crate versions cannot be overwritten; do not move a
@@ -87,7 +88,7 @@ To test authentication and packaging without uploading, run on `main` with the
 default `dry_run=true`:
 
 ```sh
-gh workflow run publish-crates.yml --ref main -f dry_run=true
+gh workflow run publish-crates.yml -f dry_run=true
 ```
 
 ## Publishing configuration and ownership
