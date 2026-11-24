@@ -73,40 +73,38 @@ fn lando_base_url(instance: &str) -> &'static str {
     }
 }
 
-pub async fn fetch_revision_from_lando(
-    client: &Client,
-    instance: Option<&str>,
-    commit_id: u64,
-) -> Result<String> {
+fn client_builder() -> reqwest::ClientBuilder {
+    Client::builder().user_agent(concat!("treeherder-cli/", env!("CARGO_PKG_VERSION")))
+}
+
+pub fn build_client() -> Result<Client> {
+    Ok(client_builder().build()?)
+}
+
+pub async fn fetch_revision_from_lando(instance: Option<&str>, commit_id: u64) -> Result<String> {
     let base_url = lando_base_url(instance.unwrap_or("lando-prod-2025"));
     let url = format!("https://{}/landing_jobs/{}/", base_url, commit_id);
 
-    fetch_lando_job(client, &url, commit_id).await
+    fetch_lando_job(&url, commit_id).await
 }
 
-async fn fetch_lando_job(client: &Client, url: &str, commit_id: u64) -> Result<String> {
+async fn fetch_lando_job(url: &str, commit_id: u64) -> Result<String> {
     #[derive(serde::Deserialize)]
     struct LandoJob {
         commit_id: Option<String>,
     }
 
-    // If Lando returns a successful response with no body, retry once
-    // before reporting an error, rather than passing an empty body to JSON.
-    let mut body = client
-        .get(url)
-        .send()
-        .await?
-        .error_for_status()?
-        .bytes()
-        .await?;
-    if body.is_empty() {
-        body = client
+    // Lando's CDN can return an empty 406 to reqwest over HTTP/2.
+    let client = client_builder().http1_only().build()?;
+    let request = || {
+        client
             .get(url)
-            .send()
-            .await?
-            .error_for_status()?
-            .bytes()
-            .await?;
+            .header(reqwest::header::ACCEPT, "application/json")
+    };
+    let mut body = request().send().await?.error_for_status()?.bytes().await?;
+    // Retry one empty successful response before attempting to parse JSON.
+    if body.is_empty() {
+        body = request().send().await?.error_for_status()?.bytes().await?;
     }
     anyhow::ensure!(
         !body.is_empty(),
@@ -1040,7 +1038,7 @@ mod tests {
                 let mut request = [0; 1024];
                 let n = stream.read(&mut request).await.unwrap();
                 assert!(String::from_utf8_lossy(&request[..n])
-                    .starts_with("GET /landing_jobs/120923/ "));
+                    .starts_with("GET /landing_jobs/120923/ HTTP/1.1\r\n"));
                 let response = format!(
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
                     body.len(),
@@ -1049,10 +1047,7 @@ mod tests {
                 stream.write_all(response.as_bytes()).await.unwrap();
             }
         });
-        assert_eq!(
-            fetch_lando_job(&Client::new(), &url, 120923).await.unwrap(),
-            "6d15fbee"
-        );
+        assert_eq!(fetch_lando_job(&url, 120923).await.unwrap(), "6d15fbee");
         server.await.unwrap();
     }
 

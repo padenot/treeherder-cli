@@ -280,17 +280,17 @@ fn validate_range_args(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn resolve_revision(client: &Client, input: &str) -> Result<String> {
+async fn resolve_revision(input: &str) -> Result<String> {
     if let Some(lando_commit_id) = extract_lando_commit_id(input) {
         let lando_instance = extract_lando_instance(input);
-        fetch_revision_from_lando(client, lando_instance.as_deref(), lando_commit_id).await
+        fetch_revision_from_lando(lando_instance.as_deref(), lando_commit_id).await
     } else {
         extract_revision(input)
     }
 }
 
 async fn resolve_push_input(client: &Client, repo: &str, input: &str) -> Result<PushRef> {
-    let revision = resolve_revision(client, input).await?;
+    let revision = resolve_revision(input).await?;
     fetch_push(client, repo, &revision).await
 }
 
@@ -903,7 +903,7 @@ async fn run() -> Result<()> {
     let (revision, push_ids) = if let Some(lando_commit_id) = extract_lando_commit_id(input) {
         let lando_instance = extract_lando_instance(input);
         let revision =
-            fetch_revision_from_lando(&client, lando_instance.as_deref(), lando_commit_id).await?;
+            fetch_revision_from_lando(lando_instance.as_deref(), lando_commit_id).await?;
         let push_id = fetch_push_id(&client, &repo, &revision).await?;
         (revision, vec![push_id])
     } else {
@@ -1986,7 +1986,7 @@ async fn run_action_mode(
                 "The input URL points to repository {input_repo}, but --repo specifies {repo}"
             );
         }
-        let revision = resolve_revision(client, input).await?;
+        let revision = resolve_revision(input).await?;
         validate_action_target(repo, &revision)?;
         let revision = revision.to_ascii_lowercase();
         let push = wait_for_push(client, repo, &revision, args.watch, pb).await?;
@@ -2470,12 +2470,6 @@ async fn run_action_mode(
         anyhow::bail!("{err}");
     }
     Ok(())
-}
-
-fn build_client() -> Result<Client> {
-    Ok(Client::builder()
-        .user_agent(concat!("treeherder-cli/", env!("CARGO_PKG_VERSION")))
-        .build()?)
 }
 
 #[cfg(test)]
