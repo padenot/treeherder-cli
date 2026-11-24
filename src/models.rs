@@ -140,6 +140,8 @@ pub struct ErrorLine {
     pub subtest: Option<String>,
     #[serde(default)]
     pub status: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expected: Option<String>,
     #[serde(default)]
     pub message: Option<String>,
     #[serde(default)]

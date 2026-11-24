@@ -563,25 +563,27 @@ pub async fn fetch_error_summary(client: &Client, log_url: &str) -> Result<Vec<E
     if log_url.contains("errorsummary") {
         let response = fetch_text_following_taskcluster_redirect(client, log_url).await?;
 
-        let mut errors = Vec::new();
-        for line in response.lines() {
-            if let Ok(error_line) = serde_json::from_str::<ErrorLine>(line) {
-                if ((error_line.action == "test_result"
-                    && error_line
-                        .status
-                        .as_ref()
-                        .is_some_and(|s| !matches!(s.as_str(), "PASS" | "OK")))
-                    || error_line.signature.is_some())
-                    && !is_harness_noise(&error_line)
-                {
-                    errors.push(error_line);
-                }
-            }
-        }
-        Ok(errors)
+        Ok(parse_error_summary(&response))
     } else {
         Ok(vec![])
     }
+}
+
+fn parse_error_summary(text: &str) -> Vec<ErrorLine> {
+    text.lines()
+        .filter_map(|line| serde_json::from_str::<ErrorLine>(line).ok())
+        .filter(|error| {
+            let unexpected_result = matches!(error.action.as_str(), "test_result" | "test_end")
+                && error.status.as_deref().is_some_and(|status| {
+                    !matches!(status, "PASS" | "OK")
+                        || error
+                            .expected
+                            .as_deref()
+                            .is_some_and(|expected| expected != status)
+                });
+            (unexpected_result || error.signature.is_some()) && !is_harness_noise(error)
+        })
+        .collect()
 }
 
 fn is_harness_noise(error: &ErrorLine) -> bool {
@@ -610,8 +612,15 @@ fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
     let mut seen = std::collections::HashSet::new();
     let mut errors = Vec::new();
     for line in text.lines() {
-        if let Some(idx) = line.find("TEST-UNEXPECTED-FAIL | ") {
-            let rest = &line[idx + "TEST-UNEXPECTED-FAIL | ".len()..];
+        if let Some((idx, marker, status)) = [
+            ("TEST-UNEXPECTED-FAIL | ", "FAIL"),
+            ("TEST-UNEXPECTED-OK | ", "OK"),
+            ("TEST-UNEXPECTED-PASS | ", "PASS"),
+        ]
+        .iter()
+        .find_map(|(marker, status)| line.find(marker).map(|idx| (idx, *marker, *status)))
+        {
+            let rest = &line[idx + marker.len()..];
             let parts: Vec<&str> = rest.splitn(3, " | ").collect();
             if !parts.is_empty() {
                 let test_name = parts[0].trim().to_string();
@@ -622,7 +631,8 @@ fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
                         line: 0,
                         test: Some(test_name),
                         subtest: None,
-                        status: Some("FAIL".to_string()),
+                        status: Some(status.to_string()),
+                        expected: None,
                         message,
                         stack: None,
                         signature: None,
@@ -639,6 +649,7 @@ fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
                     test: None,
                     subtest: None,
                     status: Some("TIMEOUT".to_string()),
+                    expected: None,
                     message: Some(msg),
                     stack: None,
                     signature: None,
@@ -1069,5 +1080,34 @@ mod tests {
 
         println!("{}", serde_json::to_string_pretty(&fixture)?);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod unexpected_success_tests {
+    use super::{parse_error_summary, parse_live_log_failures};
+
+    #[test]
+    fn summary_keeps_unexpected_successes_and_ignores_expected_successes() {
+        let summary = r#"{"action":"test_end","line":1,"test":"unexpected-ok","status":"OK","expected":"FAIL"}
+{"action":"test_result","line":2,"test":"unexpected-pass","status":"PASS","expected":"FAIL"}
+{"action":"test_result","line":3,"test":"expected-pass","status":"PASS"}
+{"action":"test_result","line":4,"test":"expected-ok","status":"OK","expected":"OK"}
+{"action":"test_result","line":5,"test":"failure","status":"FAIL"}"#;
+        let errors = parse_error_summary(summary);
+        let tests: Vec<_> = errors.iter().map(|e| e.test.as_deref().unwrap()).collect();
+        assert_eq!(tests, ["unexpected-ok", "unexpected-pass", "failure"]);
+    }
+
+    #[test]
+    fn live_log_keeps_unexpected_successes() {
+        let errors = parse_live_log_failures(
+            "TEST-UNEXPECTED-OK | test.html | expected FAIL
+TEST-UNEXPECTED-PASS | other.html | expected FAIL",
+        );
+        assert_eq!(errors.len(), 2);
+        assert_eq!(errors[0].test.as_deref(), Some("test.html"));
+        assert_eq!(errors[0].status.as_deref(), Some("OK"));
+        assert_eq!(errors[1].status.as_deref(), Some("PASS"));
     }
 }
