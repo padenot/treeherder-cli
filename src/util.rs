@@ -20,6 +20,9 @@ pub fn write_atomic(path: &Path, contents: &[u8], sync: bool) -> Result<()> {
 
 pub fn is_llm_environment() -> bool {
     std::env::var("CLAUDECODE").is_ok()
+        // Codex exports CODEX_THREAD_ID to every command; older versions only
+        // set CODEX_SANDBOX, and only for sandboxed ones.
+        || std::env::var("CODEX_THREAD_ID").is_ok()
         || std::env::var("CODEX_SANDBOX").is_ok()
         || std::env::var("GEMINI_CLI").is_ok()
         || std::env::var("OPENCODE").is_ok()
