@@ -72,7 +72,6 @@ pub fn load_credentials() -> Result<Option<ActiveCredentials>> {
 }
 
 /// Returns the credentials to act with, or an error telling the reader how to fix the login.
-#[allow(dead_code)]
 pub fn require_credentials(level_needed: u8) -> Result<ActiveCredentials> {
     let Some(active) = load_credentials()? else {
         bail!(

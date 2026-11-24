@@ -96,18 +96,99 @@ pub async fn fetch_push_id(client: &Client, repo: &str, revision: &str) -> Resul
 }
 
 pub async fn fetch_push(client: &Client, repo: &str, revision: &str) -> Result<PushRef> {
-    let url = format!(
-        "https://treeherder.mozilla.org/api/project/{}/push/?full=true&count=10&revision={}",
-        repo, revision
-    );
-
-    let response: PushResponse = client.get(&url).send().await?.json().await?;
-
-    response
+    fetch_push_matches(client, repo, revision)
+        .await?
         .results
         .first()
         .map(PushRef::from)
         .ok_or_else(|| anyhow::anyhow!("No push found for revision"))
+}
+
+async fn fetch_push_matches(client: &Client, repo: &str, revision: &str) -> Result<PushResponse> {
+    let mut url = Url::parse("https://treeherder.mozilla.org/api/project/")?;
+    url.path_segments_mut()
+        .unwrap()
+        .pop_if_empty()
+        .extend([repo, "push", ""]);
+    url.query_pairs_mut()
+        .extend_pairs([("full", "true"), ("count", "10"), ("revision", revision)]);
+    Ok(client
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
+}
+
+pub fn validate_action_target(repo: &str, revision: &str) -> Result<()> {
+    anyhow::ensure!(
+        !repo.is_empty()
+            && repo
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_'),
+        "Invalid Treeherder repository name"
+    );
+    anyhow::ensure!(
+        (1..=40).contains(&revision.len()) && revision.bytes().all(|b| b.is_ascii_hexdigit()),
+        "Actions require a nonempty hexadecimal revision or a Lando commit ID"
+    );
+    Ok(())
+}
+
+pub async fn find_action_push(
+    client: &Client,
+    repo: &str,
+    revision: &str,
+) -> Result<Option<PushRef>> {
+    let response = fetch_push_matches(client, repo, revision).await?;
+    select_action_push(&response.results, repo, revision)
+}
+
+fn select_action_push(
+    pushes: &[PushResult],
+    repo: &str,
+    revision: &str,
+) -> Result<Option<PushRef>> {
+    match pushes {
+        [] => Ok(None),
+        [push]
+            if push.revision.len() == 40
+                && push.revision.bytes().all(|b| b.is_ascii_hexdigit())
+                && push.revision.starts_with(revision) =>
+        {
+            Ok(Some(PushRef::from(push)))
+        }
+        [_] => anyhow::bail!("Treeherder returned a push that does not match {revision} on {repo}"),
+        _ => anyhow::bail!(
+            "Revision {revision} identifies multiple pushes on {repo}. Use the full revision."
+        ),
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn action_push_resolution_requires_one_matching_revision() {
+    assert!(validate_action_target("try", "").is_err());
+    assert!(validate_action_target("try", "abcdef").is_ok());
+    assert!(validate_action_target("try", "something else").is_err());
+    let push = |id, revision| PushResult {
+        id,
+        revision,
+        push_timestamp: 0,
+    };
+    let first = || push(1, "abc".to_owned() + &"d".repeat(37));
+    let second = || push(2, "abc".to_owned() + &"e".repeat(37));
+    assert!(select_action_push(&[], "try", "abc").unwrap().is_none());
+    assert_eq!(
+        select_action_push(&[first()], "try", "abc")
+            .unwrap()
+            .unwrap()
+            .id,
+        1
+    );
+    assert!(select_action_push(&[first()], "try", "def").is_err());
+    assert!(select_action_push(&[first(), second()], "try", "abc").is_err());
 }
 
 pub async fn fetch_pushes_around(

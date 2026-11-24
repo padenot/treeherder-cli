@@ -1,4 +1,3 @@
-#[allow(dead_code)] // wired up by the --cancel/--retrigger/--add-jobs commit
 mod actions;
 mod api;
 mod auth;
@@ -13,7 +12,7 @@ mod util;
 use anyhow::Result;
 use api::*;
 use cache::*;
-use clap::Parser;
+use clap::{parser::ValueSource, CommandFactory, FromArgMatches};
 use cli::{Args, Command, MatchFilter};
 use futures::stream::{self, StreamExt};
 use history::*;
@@ -24,11 +23,12 @@ use range::*;
 use regex::Regex;
 use reqwest::Client;
 use std::cmp::Reverse;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 use tempfile::TempDir;
 use util::*;
 
@@ -83,6 +83,102 @@ fn has_range_request(args: &Args) -> bool {
             || args.from.is_some()
             || args.to.is_some()
             || args.lookback.is_some())
+}
+
+fn has_action_request(args: &Args) -> bool {
+    args.cancel || args.cancel_push || args.retrigger
+}
+
+fn validate_action_args(args: &Args, matches: &clap::ArgMatches) -> Result<()> {
+    const ACTION_FLAGS: [&str; 3] = ["--cancel", "--cancel-push", "--retrigger"];
+    let explicit = |id: &str| matches.value_source(id) == Some(ValueSource::CommandLine);
+    if !args.retrigger && explicit("times") {
+        anyhow::bail!("--times requires --retrigger");
+    }
+    if !args.retrigger && !args.cancel && explicit("allow_many_runs") {
+        anyhow::bail!("--allow-many-runs requires --cancel or --retrigger");
+    }
+    if !has_action_request(args) {
+        if args.dry_run {
+            anyhow::bail!("--dry-run requires --cancel, --cancel-push or --retrigger");
+        }
+        return Ok(());
+    }
+
+    for (flag, pattern) in [("--filter", &args.filter), ("--platform", &args.platform)] {
+        if pattern
+            .as_deref()
+            .is_some_and(|pattern| pattern.trim().is_empty())
+        {
+            anyhow::bail!("{flag} requires a nonempty regex for Taskcluster actions");
+        }
+    }
+    let action = ACTION_FLAGS
+        .into_iter()
+        .zip([args.cancel, args.cancel_push, args.retrigger])
+        .find_map(|(flag, enabled)| enabled.then_some(flag))
+        .unwrap();
+    let conflicts: Vec<_> = [
+        "artifact_pattern",
+        "cache_dir",
+        "compare",
+        "context",
+        "download_artifacts",
+        "fetch_logs",
+        "from",
+        "full_stack",
+        "group_by",
+        "group_history",
+        "lookback",
+        "pattern",
+        "perf",
+        "range",
+        "show_stack_traces",
+        "similar_count",
+        "similar_history",
+        "stream_failures",
+        "suspects",
+        "test",
+        "to",
+        "use_cache",
+        "all_crash_threads",
+    ]
+    .into_iter()
+    .filter(|id| explicit(id))
+    .map(|id| format!("--{}", id.replace('_', "-")))
+    .collect();
+    if !conflicts.is_empty() {
+        anyhow::bail!(
+            "{action} cannot be combined with {}. Run inspection options in a separate command.",
+            conflicts.join(", ")
+        );
+    }
+    let match_filter_was_explicit = explicit("match_filter");
+    if args.cancel && args.filter.is_none() && args.platform.is_none() {
+        anyhow::bail!(
+            "--cancel needs --filter and/or --platform to select jobs; use --cancel-push to cancel the whole push"
+        );
+    }
+    if args.cancel_push
+        && (args.filter.is_some()
+            || args.platform.is_some()
+            || args.duration_min.is_some()
+            || args.include_intermittent
+            || match_filter_was_explicit)
+    {
+        anyhow::bail!(
+            "--cancel-push takes no job selectors. Use --cancel with --filter or --platform to select jobs."
+        );
+    }
+    if args.cancel && match_filter_was_explicit {
+        anyhow::bail!(
+            "--cancel selects pending and running jobs and does not accept --match-filter"
+        );
+    }
+    if args.input.is_none() {
+        anyhow::bail!("--cancel, --cancel-push and --retrigger require INPUT (the push)");
+    }
+    Ok(())
 }
 
 fn validate_range_args(args: &Args) -> Result<()> {
@@ -150,14 +246,17 @@ fn validate_range_args(args: &Args) -> Result<()> {
     Ok(())
 }
 
-async fn resolve_push_input(client: &Client, repo: &str, input: &str) -> Result<PushRef> {
-    let revision = if let Some(lando_commit_id) = extract_lando_commit_id(input) {
+async fn resolve_revision(client: &Client, input: &str) -> Result<String> {
+    if let Some(lando_commit_id) = extract_lando_commit_id(input) {
         let lando_instance = extract_lando_instance(input);
-        fetch_revision_from_lando(client, lando_instance.as_deref(), lando_commit_id).await?
+        fetch_revision_from_lando(client, lando_instance.as_deref(), lando_commit_id).await
     } else {
-        extract_revision(input)?
-    };
+        extract_revision(input)
+    }
+}
 
+async fn resolve_push_input(client: &Client, repo: &str, input: &str) -> Result<PushRef> {
+    let revision = resolve_revision(client, input).await?;
     fetch_push(client, repo, &revision).await
 }
 
@@ -229,6 +328,11 @@ fn matches_result(job: &Job, match_filter: &MatchFilter) -> bool {
         MatchFilter::Success => job.result == "success",
         MatchFilter::All => true,
     }
+}
+
+fn matches_retrigger_result(job: &Job, match_filter: &MatchFilter) -> bool {
+    matches_result(job, match_filter)
+        || (matches!(match_filter, MatchFilter::Failure) && job.result == "exception")
 }
 
 fn describe_matched_jobs(matched: &[&Job], selector: &JobSelector) -> String {
@@ -555,7 +659,10 @@ async fn main() -> Result<()> {
 }
 
 async fn run() -> Result<()> {
-    let mut args = Args::parse();
+    let matches = Args::command().get_matches();
+    let match_filter_was_explicit =
+        matches.value_source("match_filter") == Some(ValueSource::CommandLine);
+    let mut args = Args::from_arg_matches(&matches).unwrap_or_else(|err| err.exit());
     if let Some(command) = args.command.take() {
         return match command {
             Command::Login { level, days } => auth::login(level, days).await,
@@ -563,8 +670,7 @@ async fn run() -> Result<()> {
             Command::Status => auth::status().await,
         };
     }
-    let match_filter_was_explicit = std::env::args_os()
-        .any(|arg| arg == "--match-filter" || arg.to_string_lossy().starts_with("--match-filter="));
+    validate_action_args(&args, &matches)?;
     validate_range_args(&args)?;
 
     if !args.use_cache
@@ -730,6 +836,10 @@ async fn run() -> Result<()> {
     }
 
     let selector = JobSelector::from_args(&args)?;
+
+    if has_action_request(&args) {
+        return run_action_mode(&client, &repo, &args, &selector, &pb).await;
+    }
 
     let input = args.input.as_ref().unwrap();
     let (revision, push_ids) = if let Some(lando_commit_id) = extract_lando_commit_id(input) {
@@ -1421,6 +1531,858 @@ async fn run() -> Result<()> {
     Ok(())
 }
 
+const PUSH_INGESTION_POLL: Duration = Duration::from_secs(5);
+const DECISION_TASK_POLL: Duration = Duration::from_secs(30);
+const ACTION_TASK_POLL: Duration = Duration::from_secs(10);
+const ACTION_SETUP_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+const ACTION_TASK_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const DEFAULT_RUN_LIMIT: u64 = 100;
+
+fn jobs_count(count: usize) -> String {
+    format!("{} job{}", count, if count == 1 { "" } else { "s" })
+}
+
+fn planned_run_count(labels: usize, times: u32, reruns: usize) -> Result<u64> {
+    (labels as u64)
+        .checked_mul(u64::from(times))
+        .and_then(|runs| runs.checked_add(reruns as u64))
+        .ok_or_else(|| anyhow::anyhow!("The plan contains too many runs to count"))
+}
+
+fn short_revision(revision: &str) -> &str {
+    &revision[..std::cmp::min(12, revision.len())]
+}
+
+async fn wait_for_push(
+    client: &Client,
+    repo: &str,
+    revision: &str,
+    watch: bool,
+    pb: &ProgressBar,
+) -> Result<PushRef> {
+    loop {
+        if let Some(push) = find_action_push(client, repo, revision).await? {
+            return Ok(push);
+        }
+        if !watch {
+            anyhow::bail!(
+                "Treeherder has no push {} on {}. If it was just pushed, ingestion takes ~10 s: retry shortly, or add --watch to wait.",
+                short_revision(revision),
+                repo
+            );
+        }
+        pb.set_message("Waiting for Treeherder to ingest the push");
+        tokio::time::sleep(PUSH_INGESTION_POLL).await;
+    }
+}
+
+/// Actions are defined by the decision task's actions.json, so they are only
+/// available once it has completed.
+async fn wait_for_decision_task(
+    client: &Client,
+    repo: &str,
+    push: &PushRef,
+    watch: bool,
+    pb: &ProgressBar,
+) -> Result<actions::DecisionRun> {
+    let mut seen_unindexed = false;
+    loop {
+        let state = if let Some(task_id) =
+            actions::find_decision_task(client, repo, &push.revision).await?
+        {
+            if let Some(decision) = actions::fetch_decision_run(client, task_id).await? {
+                return Ok(decision);
+            }
+            "latest run is in progress".to_string()
+        } else {
+            let jobs = fetch_jobs(client, push.id).await?;
+            // A retried decision task has a job per run; the latest one counts.
+            let decision_job = jobs
+                .iter()
+                .filter(|job| {
+                    job.job_type_symbol == "D" && job.job_type_name.ends_with("Decision Task")
+                })
+                .max_by_key(|job| job.id);
+            match decision_job {
+                Some(job) if job.state != "completed" => job.state.clone(),
+                Some(job) if job.result == "retry" => "retrying".to_string(),
+                // The index entry appears moments after completion. When it
+                // doesn't, the push is not on a Firefox (gecko) repository.
+                Some(job) if job.result == "success" => {
+                    anyhow::ensure!(
+                        watch && !seen_unindexed,
+                        "The decision task of push {} on {repo} completed, but Taskcluster has no gecko.v2.{repo} index entry for it: actions only support Firefox (gecko) repositories.{}",
+                        short_revision(&push.revision),
+                        if watch {
+                            ""
+                        } else {
+                            " If the decision task just completed, retry in a few seconds."
+                        }
+                    );
+                    seen_unindexed = true;
+                    "completed, waiting for the Taskcluster index".to_string()
+                }
+                Some(job) => anyhow::bail!(
+                    "The decision task of push {} on {} finished with result '{}': no actions are available on this push.",
+                    short_revision(&push.revision),
+                    repo,
+                    job.result
+                ),
+                None => "not scheduled yet".to_string(),
+            }
+        };
+        if !watch {
+            anyhow::bail!(
+                "The decision task of push {} on {} hasn't completed (state: {}). Actions become available once it completes, usually a few minutes after pushing; add --watch to wait.",
+                short_revision(&push.revision),
+                repo,
+                state
+            );
+        }
+        pb.set_message(format!("Waiting for the decision task ({})", state));
+        tokio::time::sleep(DECISION_TASK_POLL).await;
+    }
+}
+
+struct PlannedTrigger<'a> {
+    action: &'a actions::Action,
+    task_id: Option<String>,
+    input: serde_json::Value,
+}
+
+impl PlannedTrigger<'_> {
+    /// Whether the action creates tasks, rather than acting on existing ones.
+    fn creates_tasks(&self) -> bool {
+        self.action.name == "retrigger-multiple"
+    }
+}
+
+struct SubmittedAction {
+    id: String,
+    target: Option<String>,
+    creates_tasks: bool,
+}
+
+#[derive(Default)]
+struct RetriggerSelection {
+    clone_labels: BTreeSet<String>,
+    rerun_jobs: BTreeMap<String, String>,
+    skipped_labels: BTreeSet<String>,
+}
+
+/// Sorts jobs by their label's `retrigger` tag, which the graph transforms set
+/// on every task: "true" labels are cloned, "false" tasks are rerun in place.
+/// Tasks without the tag, like decision and action tasks, are skipped.
+fn classify_retrigger_jobs<'a>(
+    jobs: impl IntoIterator<Item = &'a Job>,
+    label_tags: &HashMap<String, HashMap<String, String>>,
+) -> RetriggerSelection {
+    let mut selection = RetriggerSelection::default();
+    for job in jobs {
+        let label = &job.job_type_name;
+        let retrigger = label_tags
+            .get(label)
+            .and_then(|tags| tags.get("retrigger"))
+            .map(String::as_str);
+        match (retrigger, &job.task_id) {
+            (Some("true"), _) => {
+                selection.clone_labels.insert(label.clone());
+            }
+            (Some("false"), Some(id)) => {
+                selection.rerun_jobs.insert(id.clone(), label.clone());
+            }
+            _ => {
+                selection.skipped_labels.insert(label.clone());
+            }
+        }
+    }
+    selection
+}
+
+#[derive(Default, serde::Serialize)]
+struct WatchSummary {
+    completed: usize,
+    failed: usize,
+    exception: usize,
+    canceled: usize,
+    reruns_not_started: BTreeSet<String>,
+}
+
+impl WatchSummary {
+    fn record(&mut self, status: &actions::TaskStatus) {
+        match status.state {
+            actions::TaskState::Completed => self.completed += 1,
+            actions::TaskState::Failed => self.failed += 1,
+            actions::TaskState::Exception if status.was_canceled() => self.canceled += 1,
+            actions::TaskState::Exception => self.exception += 1,
+            _ => {}
+        }
+    }
+
+    fn message(&self, cancellation: bool) -> String {
+        if cancellation {
+            return format!(
+                "Taskcluster: {} canceled, {} finished before cancellation ({} completed, {} failed), {} other exceptions",
+                self.canceled,
+                self.completed + self.failed,
+                self.completed,
+                self.failed,
+                self.exception
+            );
+        }
+        let mut message = format!(
+            "Taskcluster: {} completed, {} failed, {} exceptions, {} canceled",
+            self.completed, self.failed, self.exception, self.canceled
+        );
+        if !self.reruns_not_started.is_empty() {
+            message.push_str(&format!(
+                ", {} requested reruns did not start",
+                self.reruns_not_started.len()
+            ));
+        }
+        message
+    }
+}
+
+/// Resolves each action task to Ok once it completes, or to why it did not.
+async fn wait_for_action_tasks<'a>(
+    queue: &taskcluster::Queue,
+    tasks: &'a [SubmittedAction],
+) -> Result<Vec<(&'a SubmittedAction, Result<()>)>> {
+    let deadline = tokio::time::Instant::now() + ACTION_TASK_TIMEOUT;
+    let mut waiting: Vec<&SubmittedAction> = tasks.iter().collect();
+    let mut results = Vec::new();
+    loop {
+        let states: HashMap<String, actions::TaskState> =
+            actions::fetch_task_statuses(queue, waiting.iter().map(|task| task.id.as_str()))
+                .await?
+                .into_iter()
+                .map(|status| (status.task_id, status.state))
+                .collect();
+        waiting.retain(|task| {
+            let state = states[&task.id];
+            if state == actions::TaskState::Completed {
+                results.push((*task, Ok(())));
+            } else if state.is_terminal() {
+                results.push((
+                    *task,
+                    Err(anyhow::anyhow!(
+                        "Action task {} ended in {state:?}. {TC_ROOT_URL}/tasks/{}",
+                        task.id,
+                        task.id
+                    )),
+                ));
+            } else {
+                return true;
+            }
+            false
+        });
+        if waiting.is_empty() {
+            return Ok(results);
+        }
+        if tokio::time::Instant::now() >= deadline {
+            results.extend(waiting.into_iter().map(|task| {
+                let timeout = anyhow::anyhow!("Timed out waiting for action task {}", task.id);
+                (task, Err(timeout))
+            }));
+            return Ok(results);
+        }
+        tokio::time::sleep(ACTION_TASK_POLL).await;
+    }
+}
+
+struct ActionWatch<'a> {
+    client: &'a Client,
+    decision_task_id: &'a str,
+    action_tasks: &'a [SubmittedAction],
+    targets: BTreeSet<String>,
+    previous_reruns: HashMap<String, usize>,
+    interval: Duration,
+    pb: &'a ProgressBar,
+}
+
+impl ActionWatch<'_> {
+    async fn run(
+        mut self,
+        queue: &taskcluster::Queue,
+        errors: &mut Vec<String>,
+    ) -> Result<Option<WatchSummary>> {
+        self.pb.set_message("Waiting for Taskcluster action tasks");
+        let mut succeeded = Vec::new();
+        for (task, result) in wait_for_action_tasks(queue, self.action_tasks).await? {
+            match result {
+                Ok(()) => succeeded.push(task),
+                Err(err) => {
+                    if let Some(target) = &task.target {
+                        self.targets.remove(target);
+                        self.previous_reruns.remove(target);
+                    }
+                    errors.push(format!("{err:#}"));
+                }
+            }
+        }
+        if succeeded.is_empty() {
+            return Ok(None);
+        }
+
+        for task in succeeded.into_iter().filter(|task| task.creates_tasks) {
+            match self.find_created_tasks(queue, &task.id).await {
+                Ok(ids) => self.targets.extend(ids),
+                Err(err) => errors.push(format!("Action task {}: {err:#}", task.id)),
+            }
+        }
+
+        let mut summary = WatchSummary::default();
+        let statuses =
+            actions::fetch_task_statuses(queue, self.previous_reruns.keys().map(String::as_str))
+                .await?;
+        for status in statuses {
+            if status.reruns() > self.previous_reruns[&status.task_id] {
+                if status.state.is_terminal() {
+                    summary.record(&status);
+                } else {
+                    self.targets.insert(status.task_id);
+                }
+            } else {
+                summary.reruns_not_started.insert(status.task_id);
+            }
+        }
+        while !self.targets.is_empty() {
+            self.pb
+                .set_message(format!("Watching {} Taskcluster tasks", self.targets.len()));
+            let statuses =
+                actions::fetch_task_statuses(queue, self.targets.iter().map(String::as_str))
+                    .await?;
+            for status in statuses
+                .into_iter()
+                .filter(|status| status.state.is_terminal())
+            {
+                self.targets.remove(&status.task_id);
+                summary.record(&status);
+            }
+            if !self.targets.is_empty() {
+                tokio::time::sleep(self.interval).await;
+            }
+        }
+        Ok(Some(summary))
+    }
+
+    async fn find_created_tasks(
+        &self,
+        queue: &taskcluster::Queue,
+        action_task_id: &str,
+    ) -> Result<BTreeSet<String>> {
+        let created = tokio::time::timeout(Duration::from_secs(120), async {
+            loop {
+                if let Some(created) =
+                    actions::fetch_created_tasks(self.client, action_task_id).await?
+                {
+                    return Ok::<_, anyhow::Error>(created);
+                }
+                tokio::time::sleep(ACTION_TASK_POLL).await;
+            }
+        })
+        .await
+        .map_err(|_| anyhow::anyhow!("task-graph.json did not become available"))??;
+        tokio::time::timeout(
+            Duration::from_secs(120),
+            self.find_created_copies(queue, action_task_id, created),
+        )
+        .await
+        .map_err(|_| anyhow::anyhow!("Taskcluster did not list all created copies"))?
+    }
+
+    async fn find_created_copies(
+        &self,
+        queue: &taskcluster::Queue,
+        action_task_id: &str,
+        mut created: actions::CreatedTasks,
+    ) -> Result<BTreeSet<String>> {
+        while !created.all_listed() {
+            self.pb.set_message(format!(
+                "Waiting for copies from action task {action_task_id}"
+            ));
+            let group = actions::fetch_task_group(queue, self.decision_task_id).await?;
+            created.include_group_children(group, action_task_id);
+            if !created.all_listed() {
+                tokio::time::sleep(ACTION_TASK_POLL).await;
+            }
+        }
+        Ok(created.ids)
+    }
+}
+
+/// --cancel / --cancel-push / --retrigger: resolves the push's in-tree actions, triggers them,
+/// and with --watch waits for the affected Taskcluster tasks.
+async fn run_action_mode(
+    client: &Client,
+    repo: &str,
+    args: &Args,
+    selector: &JobSelector,
+    pb: &ProgressBar,
+) -> Result<()> {
+    let resolve = async {
+        let input = args.input.as_ref().unwrap();
+        if let Some(input_repo) = extract_repo_from_url(input) {
+            anyhow::ensure!(
+                input_repo == repo,
+                "The input URL points to repository {input_repo}, but --repo specifies {repo}"
+            );
+        }
+        let revision = resolve_revision(client, input).await?;
+        validate_action_target(repo, &revision)?;
+        let revision = revision.to_ascii_lowercase();
+        let push = wait_for_push(client, repo, &revision, args.watch, pb).await?;
+        let decision = wait_for_decision_task(client, repo, &push, args.watch, pb).await?;
+        Ok::<_, anyhow::Error>((push, decision))
+    };
+    let (push, decision) = tokio::time::timeout(ACTION_SETUP_TIMEOUT, resolve)
+        .await
+        .map_err(|_| anyhow::anyhow!("Timed out resolving the push and its decision task"))??;
+    let decision_task_id = decision.task_id.as_str();
+
+    pb.set_message("Fetching jobs and actions");
+    let (jobs, actions) = tokio::try_join!(
+        async {
+            if args.cancel || args.retrigger {
+                fetch_jobs(client, push.id).await
+            } else {
+                Ok(vec![])
+            }
+        },
+        actions::fetch_actions(client, &decision),
+    )?;
+
+    // The SCM level comes from actions.json alone, so the login is checked
+    // before the per-task work.
+    let possible_actions: &[&str] = if args.cancel_push {
+        &["cancel-all"]
+    } else if args.cancel {
+        &["cancel", "cancel-all"]
+    } else {
+        &["retrigger-multiple", "rerun"]
+    };
+    let level = actions.level(possible_actions)?;
+    let credentials = if args.dry_run {
+        None
+    } else {
+        Some(pb.suspend(|| auth::require_credentials(level))?)
+    };
+    let queue = taskcluster::Queue::new(taskcluster::ClientBuilder::new(TC_ROOT_URL))?;
+
+    let mut skipped_labels = Vec::new();
+    let mut rerun_labels = BTreeSet::new();
+    let mut rerun_task_ids = Vec::new();
+    let mut skipped_rerun_task_ids = Vec::new();
+    let mut previous_reruns = HashMap::new();
+    let mut watch_targets = BTreeSet::new();
+    let mut planned_runs = None;
+    let (summary, labels, planned) = if args.cancel_push {
+        let planned = vec![PlannedTrigger {
+            action: actions.find("cancel-all", None)?,
+            task_id: None,
+            input: serde_json::json!({}),
+        }];
+        ("cancel all jobs".to_string(), vec![], planned)
+    } else if args.cancel {
+        let unfinished = |job: &&Job| job.state == "pending" || job.state == "running";
+        let mut seen = HashSet::new();
+        let targets: Vec<(&Job, &str)> = jobs
+            .iter()
+            .filter(|job| unfinished(job) && selector.matches(job))
+            .filter_map(|job| Some((job, job.task_id.as_deref()?)))
+            .filter(|(_, task_id)| seen.insert(*task_id))
+            .collect();
+        if targets.is_empty() {
+            anyhow::bail!("No pending or running jobs match --filter/--platform on this push");
+        }
+        // One cancel-all action replaces a cancel action per job when the
+        // selection covers every pending and running task of the push. It also
+        // cancels the unscheduled tasks: they wait on the selected ones and could
+        // not run anyway. Treeherder's view is checked first, as listing the
+        // task group is expensive.
+        let cancel_all = targets.len() > 1
+            && jobs
+                .iter()
+                .filter(unfinished)
+                .all(|job| job.task_id.as_deref().is_some_and(|id| seen.contains(id)))
+            && {
+                pb.set_message("Checking the push for other unfinished tasks");
+                let group = actions::fetch_task_group(&queue, decision_task_id).await?;
+                let in_group: HashSet<&str> = group
+                    .iter()
+                    .map(|task| task.status.task_id.as_str())
+                    .collect();
+                seen.is_subset(&in_group)
+                    && group.iter().all(|task| {
+                        !matches!(
+                            task.status.state,
+                            actions::TaskState::Pending | actions::TaskState::Running
+                        ) || seen.contains(task.status.task_id.as_str())
+                    })
+            };
+        let planned = if cancel_all {
+            vec![PlannedTrigger {
+                action: actions.find("cancel-all", None)?,
+                task_id: None,
+                input: serde_json::json!({}),
+            }]
+        } else {
+            pb.set_message(format!(
+                "Fetching task tags for {}",
+                jobs_count(targets.len())
+            ));
+            let tags = actions::fetch_task_tags(&queue, targets.iter().map(|(_, id)| *id)).await?;
+            targets
+                .iter()
+                .map(|(_, task_id)| {
+                    Ok(PlannedTrigger {
+                        action: actions.find("cancel", Some(&tags[*task_id]))?,
+                        task_id: Some(task_id.to_string()),
+                        input: serde_json::json!({}),
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?
+        };
+        let labels = targets
+            .iter()
+            .map(|(job, _)| job.job_type_name.clone())
+            .collect();
+        watch_targets.extend(targets.iter().map(|(_, id)| id.to_string()));
+        (
+            format!("cancel {}", jobs_count(targets.len())),
+            labels,
+            planned,
+        )
+    } else {
+        let candidates: Vec<_> = jobs
+            .iter()
+            .filter(|job| {
+                matches_retrigger_result(job, &args.match_filter) && selector.matches(job)
+            })
+            .collect();
+        if candidates.is_empty() {
+            anyhow::bail!(
+                "No jobs match --filter/--platform/--match-filter on this push (--retrigger defaults to failures and exceptions; intermittents need --include-intermittent)"
+            );
+        }
+        // Tasks of a label share its tags, so one task per label is enough.
+        let label_tasks: BTreeMap<&str, &str> = candidates
+            .iter()
+            .filter_map(|job| Some((job.job_type_name.as_str(), job.task_id.as_deref()?)))
+            .collect();
+        pb.set_message(format!(
+            "Fetching task tags for {} labels",
+            label_tasks.len()
+        ));
+        let tags = actions::fetch_task_tags(&queue, label_tasks.values().copied()).await?;
+        let label_tags: HashMap<String, HashMap<String, String>> = label_tasks
+            .into_iter()
+            .map(|(label, task_id)| (label.to_string(), tags[task_id].clone()))
+            .collect();
+        let RetriggerSelection {
+            clone_labels,
+            rerun_jobs,
+            skipped_labels: mut skipped,
+        } = classify_retrigger_jobs(candidates, &label_tags);
+        let mut planned = Vec::new();
+        if !clone_labels.is_empty() {
+            planned.push(PlannedTrigger {
+                action: actions.find("retrigger-multiple", None)?,
+                task_id: None,
+                input: serde_json::json!({ "requests": [{ "tasks": clone_labels, "times": args.times }] }),
+            });
+        }
+        if !rerun_jobs.is_empty() {
+            pb.set_message("Checking selected task runs");
+            let mut statuses =
+                actions::fetch_task_statuses(&queue, rerun_jobs.keys().map(String::as_str)).await?;
+            statuses.sort_by(|a, b| a.task_id.cmp(&b.task_id));
+            for status in statuses {
+                let label = &rerun_jobs[&status.task_id];
+                if status.can_rerun() {
+                    if args.watch {
+                        previous_reruns.insert(status.task_id.clone(), status.reruns());
+                    }
+                    rerun_labels.insert(label.clone());
+                    rerun_task_ids.push(status.task_id.clone());
+                    planned.push(PlannedTrigger {
+                        action: actions.find("rerun", Some(&label_tags[label]))?,
+                        task_id: Some(status.task_id),
+                        input: serde_json::json!({}),
+                    });
+                } else {
+                    skipped.insert(label.clone());
+                    skipped_rerun_task_ids.push(status.task_id);
+                }
+            }
+        }
+        let labels: Vec<_> = clone_labels.union(&rerun_labels).cloned().collect();
+        skipped_labels = skipped.difference(&rerun_labels).cloned().collect();
+        if labels.is_empty() {
+            anyhow::bail!(
+                "None of the matching jobs can be cloned or rerun. Skipped: {}",
+                skipped_labels.join(", ")
+            );
+        }
+        let mut operations = Vec::new();
+        if !clone_labels.is_empty() {
+            operations.push(format!(
+                "retrigger {} ×{}",
+                jobs_count(clone_labels.len()),
+                args.times
+            ));
+        }
+        if !rerun_task_ids.is_empty() {
+            operations.push(format!(
+                "rerun {} in place",
+                jobs_count(rerun_task_ids.len())
+            ));
+        }
+        planned_runs = Some(planned_run_count(
+            clone_labels.len(),
+            args.times,
+            rerun_task_ids.len(),
+        )?);
+        (operations.join(" and "), labels, planned)
+    };
+
+    // Each per-job cancel is an action task, so they count against the limit too.
+    let limited = planned_runs.map(|runs| (runs, "runs")).or_else(|| {
+        args.cancel
+            .then_some((planned.len() as u64, "cancel actions"))
+    });
+    let runs_over_limit =
+        limited.filter(|&(count, _)| count > DEFAULT_RUN_LIMIT && !args.allow_many_runs);
+    if let Some((count, what)) = runs_over_limit.filter(|_| !args.dry_run) {
+        anyhow::bail!(
+            "The plan requests {count} {what}, exceeding the default limit of {DEFAULT_RUN_LIMIT}.{} Use --dry-run to inspect it or pass --allow-many-runs to proceed.",
+            if args.cancel {
+                " --cancel-push cancels the whole push with a single action."
+            } else {
+                ""
+            }
+        );
+    }
+
+    let mut action_names: Vec<&str> = planned.iter().map(|p| p.action.name.as_str()).collect();
+    action_names.dedup();
+    actions::verify_action_hooks(client, decision_task_id, planned.iter().map(|p| p.action))
+        .await?;
+    let payloads = planned
+        .iter()
+        .map(|p| {
+            p.action.render_payload(
+                &actions.variables,
+                decision_task_id,
+                p.task_id.as_deref(),
+                p.input.clone(),
+            )
+        })
+        .collect::<Result<Vec<_>>>()?;
+    let push_url = format!(
+        "https://treeherder.mozilla.org/jobs?repo={}&revision={}",
+        repo, push.revision
+    );
+
+    let mut action_tasks = Vec::new();
+    let mut trigger_errors = Vec::new();
+    if let Some(credentials) = credentials {
+        if args.watch && args.cancel_push {
+            pb.set_message("Finding unfinished tasks in the group");
+            let group = actions::fetch_task_group(&queue, decision_task_id).await?;
+            anyhow::ensure!(
+                !group.is_empty(),
+                "Taskcluster returned an empty decision task group"
+            );
+            watch_targets.extend(
+                group
+                    .into_iter()
+                    .map(|task| task.status)
+                    .filter(|status| !status.state.is_terminal())
+                    .map(|status| status.task_id),
+            );
+        }
+        let fix_hint = credentials.fix_hint(level);
+        // A timeout can mean the hook was accepted. Never retry these requests.
+        let hooks = taskcluster::Hooks::new(
+            taskcluster::ClientBuilder::new(TC_ROOT_URL)
+                .credentials(credentials.into_credentials())
+                .retry(taskcluster::Retry {
+                    retries: 0,
+                    ..Default::default()
+                }),
+        )?;
+        pb.set_message(format!("Triggering {}", action_names.join(", ")));
+        let mut results = stream::iter(planned.iter().zip(&payloads))
+            .map(|(plan, payload)| {
+                let hooks = &hooks;
+                let fix_hint = fix_hint.as_str();
+                async move {
+                    let result = actions::trigger(hooks, plan.action, payload, fix_hint).await;
+                    (plan, result)
+                }
+            })
+            .buffered(actions::ACTION_CONCURRENCY);
+        while let Some((plan, result)) = results.next().await {
+            match result {
+                Ok(id) => action_tasks.push(SubmittedAction {
+                    id,
+                    target: plan.task_id.clone(),
+                    creates_tasks: plan.creates_tasks(),
+                }),
+                Err(err) => {
+                    if let Some(target) = plan.task_id.as_deref() {
+                        watch_targets.remove(target);
+                        previous_reruns.remove(target);
+                        trigger_errors.push(format!("Target {target}: {err:#}"));
+                    } else {
+                        trigger_errors.push(format!("{err:#}"));
+                    }
+                }
+            }
+        }
+    }
+
+    let action_task_ids: Vec<_> = action_tasks.iter().map(|task| &task.id).collect();
+    if !args.json {
+        pb.suspend(|| {
+            if args.dry_run {
+                println!(
+                    "Dry run: would {} on {} {}",
+                    summary,
+                    repo,
+                    short_revision(&push.revision)
+                );
+            } else {
+                println!(
+                    "Requested: {} on {} {}",
+                    summary,
+                    repo,
+                    short_revision(&push.revision)
+                );
+            }
+            if let Some(runs) = planned_runs {
+                println!("Planned runs: {runs}");
+            }
+            if runs_over_limit.is_some() {
+                println!("This plan requires --allow-many-runs to submit.");
+            }
+            for label in &labels {
+                if rerun_labels.contains(label) {
+                    println!("  {label} (rerun existing task)");
+                } else {
+                    println!("  {label}");
+                }
+            }
+            for label in &skipped_labels {
+                println!("  Skipped: {label}");
+            }
+            for id in &rerun_task_ids {
+                println!("  Rerun target: {TC_ROOT_URL}/tasks/{id}");
+            }
+            for id in &skipped_rerun_task_ids {
+                println!("  Skipped ineligible rerun target: {TC_ROOT_URL}/tasks/{id}");
+            }
+            for task_id in &action_task_ids {
+                println!("Action task: {}/tasks/{}", TC_ROOT_URL, task_id);
+            }
+            println!("Push: {}", push_url);
+            if !action_task_ids.is_empty() && !args.watch {
+                println!(
+                "The action task does the work; add --watch to wait for it and the resulting jobs."
+            );
+            }
+        });
+    }
+
+    let mut watch_summary = None;
+    let mut watch_errors = Vec::new();
+    if args.watch && !action_tasks.is_empty() {
+        let watch = ActionWatch {
+            client,
+            decision_task_id,
+            action_tasks: &action_tasks,
+            targets: watch_targets,
+            previous_reruns,
+            interval: Duration::from_secs(args.watch_interval.max(1)),
+            pb,
+        };
+        let result = tokio::select! {
+            result = watch.run(&queue, &mut watch_errors) => result,
+            signal = tokio::signal::ctrl_c() => signal
+                .map_err(anyhow::Error::from)
+                .and_then(|()| Err(anyhow::anyhow!("Stopped watching; submitted actions may still run"))),
+        };
+        match result {
+            Ok(Some(summary)) => {
+                let message = summary.message(args.cancel || args.cancel_push);
+                if !args.json {
+                    pb.suspend(|| {
+                        println!("{message}");
+                        for id in &summary.reruns_not_started {
+                            println!("Rerun did not start: {TC_ROOT_URL}/tasks/{id}");
+                        }
+                    });
+                }
+                if args.notify {
+                    if let Err(err) = send_notification("Treeherder Action Complete", &message) {
+                        eprintln!("Failed to send notification: {err}");
+                    }
+                }
+                watch_summary = Some(summary);
+            }
+            Ok(None) => {}
+            Err(err) => watch_errors.push(format!("{err:#}")),
+        }
+    }
+    let watch_error = (!watch_errors.is_empty()).then(|| watch_errors.join("; "));
+
+    pb.finish_and_clear();
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "actions": action_names,
+                "repo": repo,
+                "revision": push.revision,
+                "dry_run": args.dry_run,
+                "labels": labels,
+                "skipped_labels": skipped_labels,
+                "rerun_labels": rerun_labels,
+                "rerun_task_ids": rerun_task_ids,
+                "skipped_rerun_task_ids": skipped_rerun_task_ids,
+                "times": planned
+                    .iter()
+                    .any(PlannedTrigger::creates_tasks)
+                    .then_some(args.times),
+                "planned_runs": planned_runs,
+                "requires_allow_many_runs": runs_over_limit.is_some(),
+                "action_task_ids": action_task_ids,
+                "trigger_errors": trigger_errors,
+                "watch_summary": watch_summary,
+                "watch_error": watch_error,
+                "push_url": push_url,
+            }))?
+        );
+    }
+    if !trigger_errors.is_empty() {
+        anyhow::bail!(
+            "{} of {} triggers succeeded. {}{}",
+            action_task_ids.len(),
+            planned.len(),
+            trigger_errors.join("; "),
+            watch_error
+                .as_deref()
+                .map_or(String::new(), |err| format!("; watch: {err}"))
+        );
+    }
+    if let Some(err) = watch_error {
+        anyhow::bail!("{err}");
+    }
+    Ok(())
+}
+
 fn build_client() -> Result<Client> {
     Ok(Client::builder()
         .user_agent(concat!("treeherder-cli/", env!("CARGO_PKG_VERSION")))
@@ -1486,5 +2448,246 @@ mod tests {
             describe_matched_jobs(&[], &selector),
             "filter matched no jobs on this push"
         );
+    }
+
+    fn action_args(argv: &[&str]) -> Result<()> {
+        let matches = Args::command()
+            .try_get_matches_from(std::iter::once("treeherder-cli").chain(argv.iter().copied()))?;
+        let args = Args::from_arg_matches(&matches)?;
+        validate_action_args(&args, &matches)
+    }
+
+    #[test]
+    fn action_flags_need_a_push_and_exclude_other_modes() {
+        assert!(action_args(&["abc", "--cancel-push"]).is_ok());
+        assert!(action_args(&["abc", "--cancel", "--filter", "media"]).is_ok());
+        assert!(action_args(&["abc", "--cancel", "--platform", "linux"]).is_ok());
+        assert!(action_args(&["abc", "--cancel"]).is_err());
+        assert!(action_args(&["abc", "--cancel-push", "--cancel", "--filter", "x"]).is_err());
+        assert!(action_args(&["abc", "--cancel-push", "--retrigger"]).is_err());
+        assert!(action_args(&["abc", "--cancel-push", "--filter", "x"]).is_err());
+        assert!(action_args(&["abc", "--cancel-push", "--platform", "linux"]).is_err());
+        assert!(action_args(&["abc", "--cancel-push", "--times", "2"]).is_err());
+        assert!(action_args(&["abc", "--retrigger", "--times", "3", "--dry-run"]).is_ok());
+        assert!(action_args(&["--cancel-push"]).is_err());
+        assert!(action_args(&["abc", "--cancel", "--retrigger"]).is_err());
+        assert!(action_args(&["abc", "--cancel", "--filter", "x", "--times", "2"]).is_err());
+        assert!(action_args(&["abc", "--retrigger", "--times", "0"]).is_err());
+        assert!(action_args(&["abc", "--retrigger", "--times", "100"]).is_ok());
+        assert!(
+            action_args(&["abc", "--retrigger", "--times", "101", "--allow-many-runs"]).is_ok()
+        );
+        assert!(action_args(&["abc", "--cancel-push", "--allow-many-runs"]).is_err());
+        assert!(action_args(&["abc", "--cancel", "--filter", "x", "--allow-many-runs"]).is_ok());
+        assert!(action_args(&["abc", "--retrigger", "--compare", "def"]).is_err());
+        assert!(action_args(&["abc", "--cancel-push", "--lookback", "5"]).is_err());
+        assert!(action_args(&["abc", "--cancel-push", "--match-filter", "failure"]).is_err());
+        assert!(action_args(&["abc", "--dry-run"]).is_err());
+        assert!(action_args(&["abc", "--times", "2"]).is_err());
+    }
+
+    #[test]
+    fn planned_run_count_includes_each_clone_and_in_place_rerun() {
+        assert_eq!(planned_run_count(2, 50, 1).unwrap(), DEFAULT_RUN_LIMIT + 1);
+        assert_eq!(planned_run_count(0, 101, 1).unwrap(), 1);
+    }
+
+    #[test]
+    fn action_flags_reject_empty_selectors_and_inspection_options() {
+        for args in [
+            ["abc", "--cancel", "--filter", ""],
+            ["abc", "--cancel", "--platform", ""],
+            ["abc", "--retrigger", "--filter", " "],
+        ] {
+            assert!(action_args(&args)
+                .unwrap_err()
+                .to_string()
+                .contains("nonempty regex"));
+        }
+        assert!(action_args(&["abc", "--filter", ""]).is_ok());
+        let error = action_args(&[
+            "abc",
+            "--cancel-push",
+            "--pattern",
+            "linux",
+            "--download-artifacts",
+            "--dry-run",
+        ])
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("--cancel-push cannot be combined with"));
+        assert!(error.contains("--pattern"));
+        assert!(error.contains("--download-artifacts"));
+    }
+
+    #[test]
+    fn retrigger_selection_keeps_the_selected_task_id_for_in_place_reruns() {
+        let mut failed = job("toolchain", "linux", "busted", None);
+        failed.task_id = Some("failed-task-id".into());
+        let mut succeeded = job("toolchain", "linux", "success", None);
+        succeeded.task_id = Some("successful-task-id".into());
+        let mut exception = job("toolchain", "linux", "exception", None);
+        exception.task_id = Some("exception-task-id".into());
+        assert!(!matches_result(&exception, &MatchFilter::Failure));
+        let jobs = [
+            job("Gecko Decision Task", "linux", "busted", None),
+            job("Action Task", "linux", "busted", None),
+            job("mochitest", "linux", "testfailed", None),
+            failed,
+            succeeded,
+            exception,
+        ];
+        let retrigger = |value: &str| HashMap::from([("retrigger".to_string(), value.to_string())]);
+        let label_tags = HashMap::from([
+            ("mochitest".to_string(), retrigger("true")),
+            ("toolchain".to_string(), retrigger("false")),
+            ("Gecko Decision Task".to_string(), HashMap::new()),
+        ]);
+        let selected = classify_retrigger_jobs(
+            jobs.iter()
+                .filter(|job| matches_retrigger_result(job, &MatchFilter::Failure)),
+            &label_tags,
+        );
+        assert_eq!(selected.clone_labels, BTreeSet::from(["mochitest".into()]));
+        assert_eq!(
+            selected.rerun_jobs,
+            BTreeMap::from([
+                ("failed-task-id".into(), "toolchain".into()),
+                ("exception-task-id".into(), "toolchain".into())
+            ])
+        );
+        assert_eq!(
+            selected.skipped_labels,
+            BTreeSet::from(["Action Task".into(), "Gecko Decision Task".into()])
+        );
+    }
+
+    #[test]
+    fn cancellation_watch_counts_final_run_outcomes() {
+        let mut summary = WatchSummary::default();
+        for (state, reason) in [
+            ("exception", "canceled"),
+            ("exception", "deadline-exceeded"),
+            ("completed", "completed"),
+            ("failed", "failed"),
+        ] {
+            let status: actions::TaskStatus = serde_json::from_value(serde_json::json!({
+                "taskId": "task-id",
+                "state": state,
+                "runs": [
+                    {"reasonCreated": "scheduled", "reasonResolved": "canceled"},
+                    {"reasonCreated": "rerun", "reasonResolved": reason}
+                ]
+            }))
+            .unwrap();
+            summary.record(&status);
+        }
+        assert_eq!(
+            serde_json::to_value(&summary).unwrap(),
+            serde_json::json!({
+                "canceled": 1, "completed": 1, "failed": 1, "exception": 1,
+                "reruns_not_started": []
+            })
+        );
+        assert!(summary
+            .message(true)
+            .contains("1 canceled, 2 finished before cancellation"));
+    }
+
+    #[tokio::test]
+    async fn action_watch_keeps_tracking_targets_after_an_action_failure() {
+        use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let root = format!("http://{}", listener.local_addr().unwrap());
+        let failed = "A".repeat(22);
+        let succeeded = "B".repeat(22);
+        let failed_target = "C".repeat(22);
+        let canceled_target = "D".repeat(22);
+        let no_rerun_target = "E".repeat(22);
+        let statuses = HashMap::from([
+            (failed.clone(), ("failed", "failed")),
+            (succeeded.clone(), ("completed", "completed")),
+            (canceled_target.clone(), ("exception", "canceled")),
+            (no_rerun_target.clone(), ("completed", "completed")),
+        ]);
+        // Answers the queue's batch status endpoint.
+        let server = tokio::spawn(async move {
+            loop {
+                let (stream, _) = listener.accept().await.unwrap();
+                let mut stream = BufReader::new(stream);
+                let mut content_length = 0;
+                loop {
+                    let mut line = String::new();
+                    stream.read_line(&mut line).await.unwrap();
+                    if line == "\r\n" {
+                        break;
+                    }
+                    if let Some((name, value)) = line.split_once(':') {
+                        if name.eq_ignore_ascii_case("content-length") {
+                            content_length = value.trim().parse().unwrap();
+                        }
+                    }
+                }
+                let mut body = vec![0; content_length];
+                stream.read_exact(&mut body).await.unwrap();
+                let request: serde_json::Value = serde_json::from_slice(&body).unwrap();
+                let entries: Vec<_> = request["taskIds"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|id| {
+                        let id = id.as_str().unwrap();
+                        let (state, reason) = statuses[id];
+                        serde_json::json!({ "taskId": id, "status": {
+                            "taskId": id, "state": state,
+                            "runs": [{ "reasonCreated": "scheduled", "reasonResolved": reason }]
+                        }})
+                    })
+                    .collect();
+                let body = serde_json::json!({ "statuses": entries }).to_string();
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let queue = taskcluster::Queue::new(taskcluster::ClientBuilder::new(root)).unwrap();
+        let tasks = [
+            SubmittedAction {
+                id: failed.clone(),
+                target: Some(failed_target.clone()),
+                creates_tasks: false,
+            },
+            SubmittedAction {
+                id: succeeded,
+                target: Some(canceled_target.clone()),
+                creates_tasks: false,
+            },
+        ];
+        let watch = ActionWatch {
+            client: &build_client().unwrap(),
+            decision_task_id: "unused",
+            action_tasks: &tasks,
+            targets: BTreeSet::from([failed_target, canceled_target]),
+            previous_reruns: HashMap::from([(no_rerun_target.clone(), 0)]),
+            interval: Duration::from_secs(1),
+            pb: &ProgressBar::hidden(),
+        };
+        let mut errors = Vec::new();
+        let summary = tokio::time::timeout(Duration::from_secs(5), watch.run(&queue, &mut errors))
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+        assert_eq!(summary.canceled, 1);
+        assert_eq!(
+            summary.reruns_not_started,
+            BTreeSet::from([no_rerun_target])
+        );
+        assert_eq!(errors.len(), 1);
+        assert!(errors[0].contains(&failed));
+        server.abort();
     }
 }
