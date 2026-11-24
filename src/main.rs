@@ -57,6 +57,10 @@ INPUT: revision hash|Treeherder URL|Lando commit ID (numeric or URL with ?landoC
 --test <regex> restrict --suspects to matching test names
 --duration-min <N> only jobs longer than N seconds
 --context <N> show N pushes before and after this push (for bisecting autoland failures)
+login (human, opens a browser): ! treeherder-cli login [--level 3 for autoland]|status|logout
+--cancel-push whole push|--cancel pending/running jobs matching --filter/--platform (one is required)
+--retrigger jobs selected by --filter/--platform/--match-filter (default failures and exceptions)|--add-jobs <regex> task labels runnable on the push
+--times <N> runs per job (--allow-many-runs above 100 total runs or cancels)|--dry-run list what would be triggered|with --watch: wait for decision task, action task, then jobs
 Question -> flags:
   did job X run on this push?            REV --filter X --match-filter all --json
   did manifest M run / pass on this push? REV --group-history M --lookback 0
@@ -64,6 +68,10 @@ Question -> flags:
   is this failure older than my window?   look for "failure predates window" in --suspects or --group-history
   which pushes could have caused test T?  REV --lookback 20 --suspects --test T
   is job X intermittent?                  --similar-history <job-id> (shows revision, date, classification name)
+  retrigger failures to check them?       REV --retrigger --times 5 --dry-run, then without --dry-run
+  run more jobs on my push?               REV --add-jobs 'regex' --dry-run, then without --dry-run
+  stop my push?                           REV --cancel-push
+  "Not logged in" / login expired?        ask the user to run: ! treeherder-cli login
 Ex: treeherder-cli a13b9fc22101|treeherder-cli 12345 --stream-failures|treeherder-cli a13b9fc22101 --json
 Ex: treeherder-cli a13b9fc22101 --filter mochitest --platform linux|treeherder-cli a13b9fc22101 --compare b2c3d4e5
 Ex: treeherder-cli a13b9fc22101 --repo autoland --context 5

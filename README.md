@@ -70,6 +70,52 @@ treeherder-cli --use-cache --cache-dir ./logs --pattern ERROR
 Other useful options: `--include-intermittent`, `--duration-min SECONDS`, `--perf`,
 `--all-crash-threads`, and `--full-stack`. Run `treeherder-cli --help` for details.
 
+## Cancel, retrigger, and add jobs
+
+These trigger the push's Taskcluster in-tree actions, like the Treeherder UI does.
+Sign in once; this opens the Taskcluster UI to create a client limited to triggering
+action hooks, valid 90 days (`--days`). Use `--level 3` for autoland and other level-3
+repositories.
+Actions support SCM levels 1 and 3, on Firefox (gecko) repositories.
+Over SSH, `login` prints the `ssh -L` command that forwards its sign-in callback.
+
+```sh
+treeherder-cli login                                      # add --level 3 for level-3 repos
+treeherder-cli status
+treeherder-cli logout
+
+treeherder-cli a13b9fc22101 --cancel-push                  # the whole push
+treeherder-cli a13b9fc22101 --cancel --filter mochitest    # matching pending/running jobs
+treeherder-cli a13b9fc22101 --retrigger --times 3          # failed jobs, 3 times each
+treeherder-cli a13b9fc22101 --retrigger --match-filter all --filter 'media.*gpu'
+treeherder-cli a13b9fc22101 --add-jobs 'linux2404-64/opt-mochitest-media' --dry-run
+```
+
+`--retrigger` selects failed jobs and jobs that ended in an exception by default.
+It reads each selected label's `retrigger` task tag and reports skipped labels,
+such as decision and action jobs, which have none. Firefox clones
+eligible labels `--times` times. For labels that only support rerunning, the CLI
+requests one in-place rerun per selected task in the failed or exception state.
+Use `--allow-many-runs` to submit a plan for more than 100 total requested runs.
+The total counts each requested copy and each in-place rerun once.
+
+`--cancel` triggers one cancel action per job. When it selects every pending and
+running task of the push, it uses a single cancel-all action instead, which also
+cancels the tasks waiting on them. More than 100 per-job cancels need
+`--allow-many-runs`.
+
+`--dry-run` lists the plan, including the total requested runs, and exits.
+With `--watch`, the CLI waits for the decision task and action tasks, then follows
+the affected tasks in Taskcluster. `--json`
+emits one result with the action task IDs and, with `--watch`, the completion summary.
+If some action tasks fail, the CLI reports the failures and follows the targets of
+successful actions. The summary identifies requested in-place reruns that did not start.
+Cancellation summaries count canceled tasks separately from completed tasks, failed
+tasks, and other exceptions. Run log, artifact, and other inspection options as a
+separate command.
+`TASKCLUSTER_CLIENT_ID` and `TASKCLUSTER_ACCESS_TOKEN` take precedence over the stored login,
+unless `TASKCLUSTER_ROOT_URL` names another Taskcluster deployment.
+
 ## Development
 
 ```sh
