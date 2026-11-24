@@ -86,13 +86,14 @@ treeherder-cli logout
 
 treeherder-cli a13b9fc22101 --cancel-push                  # the whole push
 treeherder-cli a13b9fc22101 --cancel --filter mochitest    # matching pending/running jobs
-treeherder-cli a13b9fc22101 --retrigger --times 3          # failed jobs, 3 times each
+treeherder-cli a13b9fc22101 --retrigger-failures --times 3 # failed jobs, 3 copies where supported
 treeherder-cli a13b9fc22101 --retrigger --match-filter all --filter 'media.*gpu'
 treeherder-cli a13b9fc22101 --add-jobs 'linux2404-64/opt-mochitest-media' --dry-run
 ```
 
-`--retrigger` selects failed jobs and jobs that ended in an exception by default.
-It reads each selected label's `retrigger` task tag and reports skipped labels,
+`--retrigger-failures` selects test failures and busted jobs.
+`--retrigger` also selects jobs that ended in an exception by default.
+The CLI reads each selected label's `retrigger` task tag and reports skipped labels,
 such as decision and action jobs, which have none. Firefox clones
 eligible labels `--times` times. For labels that only support rerunning, the CLI
 requests one in-place rerun per selected task in the failed or exception state.

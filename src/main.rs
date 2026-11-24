@@ -59,7 +59,7 @@ INPUT: revision hash|Treeherder URL|Lando commit ID (numeric or URL with ?landoC
 --context <N> show N pushes before and after this push (for bisecting autoland failures)
 login (human, opens a browser): ! treeherder-cli login [--level 3 for autoland]|status|logout
 --cancel-push whole push|--cancel pending/running jobs matching --filter/--platform (one is required)
---retrigger jobs selected by --filter/--platform/--match-filter (default failures and exceptions)|--add-jobs <regex> task labels runnable on the push
+--retrigger jobs selected by --filter/--platform/--match-filter (default failures and exceptions)|--retrigger-failures only failed jobs|--add-jobs <regex> task labels runnable on the push
 --times <N> runs per job (--allow-many-runs above 100 total runs or cancels)|--dry-run list what would be triggered|with --watch: wait for decision task, action task, then jobs
 Question -> flags:
   did job X run on this push?            REV --filter X --match-filter all --json
@@ -68,7 +68,7 @@ Question -> flags:
   is this failure older than my window?   look for "failure predates window" in --suspects or --group-history
   which pushes could have caused test T?  REV --lookback 20 --suspects --test T
   is job X intermittent?                  --similar-history <job-id> (shows revision, date, classification name)
-  retrigger failures to check them?       REV --retrigger --times 5 --dry-run, then without --dry-run
+  retrigger failures to check them?       REV --retrigger-failures --times 5 --dry-run, then without --dry-run
   run more jobs on my push?               REV --add-jobs 'regex' --dry-run, then without --dry-run
   stop my push?                           REV --cancel-push
   "Not logged in" / login expired?        ask the user to run: ! treeherder-cli login
@@ -94,22 +94,29 @@ fn has_range_request(args: &Args) -> bool {
 }
 
 fn has_action_request(args: &Args) -> bool {
-    args.cancel || args.cancel_push || args.retrigger || args.add_jobs.is_some()
+    args.cancel || args.cancel_push || requests_scheduling(args)
+}
+
+fn requests_scheduling(args: &Args) -> bool {
+    args.retrigger || args.retrigger_failures || args.add_jobs.is_some()
 }
 
 fn validate_action_args(args: &Args, matches: &clap::ArgMatches) -> Result<()> {
-    const ACTION_FLAGS: [&str; 4] = ["--cancel", "--cancel-push", "--retrigger", "--add-jobs"];
-    let schedules_jobs = args.retrigger || args.add_jobs.is_some();
+    let schedules_jobs = requests_scheduling(args);
     let explicit = |id: &str| matches.value_source(id) == Some(ValueSource::CommandLine);
     if !schedules_jobs && explicit("times") {
-        anyhow::bail!("--times requires --retrigger or --add-jobs");
+        anyhow::bail!("--times requires --retrigger, --retrigger-failures or --add-jobs");
     }
     if !schedules_jobs && !args.cancel && explicit("allow_many_runs") {
-        anyhow::bail!("--allow-many-runs requires --cancel, --retrigger or --add-jobs");
+        anyhow::bail!(
+            "--allow-many-runs requires --cancel, --retrigger, --retrigger-failures or --add-jobs"
+        );
     }
     if !has_action_request(args) {
         if args.dry_run {
-            anyhow::bail!("--dry-run requires --cancel, --cancel-push, --retrigger or --add-jobs");
+            anyhow::bail!(
+                "--dry-run requires --cancel, --cancel-push, --retrigger, --retrigger-failures or --add-jobs"
+            );
         }
         return Ok(());
     }
@@ -126,16 +133,16 @@ fn validate_action_args(args: &Args, matches: &clap::ArgMatches) -> Result<()> {
             anyhow::bail!("{flag} requires a nonempty regex for Taskcluster actions");
         }
     }
-    let action = ACTION_FLAGS
-        .into_iter()
-        .zip([
-            args.cancel,
-            args.cancel_push,
-            args.retrigger,
-            args.add_jobs.is_some(),
-        ])
-        .find_map(|(flag, enabled)| enabled.then_some(flag))
-        .unwrap();
+    let action = [
+        ("--cancel", args.cancel),
+        ("--cancel-push", args.cancel_push),
+        ("--retrigger", args.retrigger),
+        ("--retrigger-failures", args.retrigger_failures),
+        ("--add-jobs", args.add_jobs.is_some()),
+    ]
+    .into_iter()
+    .find_map(|(flag, enabled)| enabled.then_some(flag))
+    .unwrap();
     let conflicts: Vec<_> = [
         "artifact_pattern",
         "cache_dir",
@@ -204,11 +211,7 @@ fn validate_action_args(args: &Args, matches: &clap::ArgMatches) -> Result<()> {
             "--cancel selects pending and running jobs and does not accept --match-filter"
         );
     }
-    if args.input.is_none() {
-        anyhow::bail!(
-            "--cancel, --cancel-push, --retrigger and --add-jobs require INPUT (the push)"
-        );
-    }
+    anyhow::ensure!(args.input.is_some(), "{action} requires INPUT (the push)");
     Ok(())
 }
 
@@ -361,9 +364,11 @@ fn matches_result(job: &Job, match_filter: &MatchFilter) -> bool {
     }
 }
 
-fn matches_retrigger_result(job: &Job, match_filter: &MatchFilter) -> bool {
-    matches_result(job, match_filter)
-        || (matches!(match_filter, MatchFilter::Failure) && job.result == "exception")
+fn matches_retrigger_result(job: &Job, args: &Args) -> bool {
+    matches_result(job, &args.match_filter)
+        || (args.retrigger
+            && matches!(args.match_filter, MatchFilter::Failure)
+            && job.result == "exception")
 }
 
 fn describe_matched_jobs(matched: &[&Job], selector: &JobSelector) -> String {
@@ -1978,7 +1983,7 @@ async fn run_action_mode(
     pb.set_message("Fetching jobs and actions");
     let (jobs, actions, runnable_labels) = tokio::try_join!(
         async {
-            if args.cancel || args.retrigger {
+            if args.cancel || args.retrigger || args.retrigger_failures {
                 fetch_jobs(client, push.id).await
             } else {
                 Ok(vec![])
@@ -2124,13 +2129,11 @@ async fn run_action_mode(
     } else {
         let candidates: Vec<_> = jobs
             .iter()
-            .filter(|job| {
-                matches_retrigger_result(job, &args.match_filter) && selector.matches(job)
-            })
+            .filter(|job| matches_retrigger_result(job, args) && selector.matches(job))
             .collect();
         if candidates.is_empty() {
             anyhow::bail!(
-                "No jobs match --filter/--platform/--match-filter on this push (--retrigger defaults to failures and exceptions; intermittents need --include-intermittent)"
+                "No jobs match the retrigger selection on this push (intermittents need --include-intermittent)"
             );
         }
         // Tasks of a label share its tags, so one task per label is enough.
@@ -2460,6 +2463,7 @@ fn build_client() -> Result<Client> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use clap::Parser;
 
     fn job(name: &str, platform: &str, result: &str, classification: Option<u64>) -> Job {
         Job {
@@ -2539,6 +2543,13 @@ mod tests {
         assert!(action_args(&["abc", "--cancel-push", "--platform", "linux"]).is_err());
         assert!(action_args(&["abc", "--cancel-push", "--times", "2"]).is_err());
         assert!(action_args(&["abc", "--retrigger", "--times", "3", "--dry-run"]).is_ok());
+        assert!(action_args(&["abc", "--retrigger-failures", "--times", "3", "--dry-run"]).is_ok());
+        for conflicting_flag in ["--retrigger", "--cancel-all"] {
+            assert!(action_args(&["abc", "--retrigger-failures", conflicting_flag]).is_err());
+        }
+        assert!(action_args(&["abc", "--retrigger-failures", "--match-filter", "all"]).is_err());
+        assert!(action_args(&["abc", "--retrigger-failures", "--add-jobs", "media"]).is_err());
+        assert!(action_args(&["--retrigger-failures"]).is_err());
         assert!(action_args(&["--cancel-push"]).is_err());
         assert!(action_args(&["abc", "--cancel", "--retrigger"]).is_err());
         assert!(action_args(&["abc", "--cancel", "--filter", "x", "--times", "2"]).is_err());
@@ -2631,9 +2642,10 @@ mod tests {
             ("toolchain".to_string(), retrigger("false")),
             ("Gecko Decision Task".to_string(), HashMap::new()),
         ]);
+        let args = Args::parse_from(["treeherder-cli", "abc", "--retrigger"]);
         let selected = classify_retrigger_jobs(
             jobs.iter()
-                .filter(|job| matches_retrigger_result(job, &MatchFilter::Failure)),
+                .filter(|job| matches_retrigger_result(job, &args)),
             &label_tags,
         );
         assert_eq!(selected.clone_labels, BTreeSet::from(["mochitest".into()]));
@@ -2647,6 +2659,18 @@ mod tests {
         assert_eq!(
             selected.skipped_labels,
             BTreeSet::from(["Action Task".into(), "Gecko Decision Task".into()])
+        );
+
+        let args = Args::parse_from(["treeherder-cli", "abc", "--retrigger-failures"]);
+        let selected = classify_retrigger_jobs(
+            jobs.iter()
+                .filter(|job| matches_retrigger_result(job, &args)),
+            &label_tags,
+        );
+        assert_eq!(selected.clone_labels, BTreeSet::from(["mochitest".into()]));
+        assert_eq!(
+            selected.rerun_jobs,
+            BTreeMap::from([("failed-task-id".into(), "toolchain".into())])
         );
     }
 
