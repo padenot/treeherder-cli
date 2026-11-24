@@ -607,6 +607,7 @@ fn parse_error_summary(text: &str) -> Vec<ErrorLine> {
                             .expected
                             .as_deref()
                             .is_some_and(|expected| expected != status)
+                            && !error.known_intermittent.iter().any(|known| known == status)
                 });
             (unexpected_result || error.signature.is_some()) && !is_harness_noise(error)
         })
@@ -660,6 +661,7 @@ fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
                         subtest: None,
                         status: Some(status.to_string()),
                         expected: None,
+                        known_intermittent: vec![],
                         message,
                         stack: None,
                         signature: None,
@@ -677,6 +679,7 @@ fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
                     subtest: None,
                     status: Some("TIMEOUT".to_string()),
                     expected: None,
+                    known_intermittent: vec![],
                     message: Some(msg),
                     stack: None,
                     signature: None,
@@ -1150,10 +1153,20 @@ mod unexpected_success_tests {
 {"action":"test_result","line":2,"test":"unexpected-pass","status":"PASS","expected":"FAIL"}
 {"action":"test_result","line":3,"test":"expected-pass","status":"PASS"}
 {"action":"test_result","line":4,"test":"expected-ok","status":"OK","expected":"OK"}
-{"action":"test_result","line":5,"test":"failure","status":"FAIL"}"#;
+{"action":"test_result","line":5,"test":"failure","status":"FAIL"}
+{"action":"test_result","line":6,"test":"intermittent-ok","status":"OK","expected":"FAIL","known_intermittent":["OK"]}
+{"action":"test_result","line":7,"test":"unexpected-result-ok","status":"OK","expected":"FAIL"}"#;
         let errors = parse_error_summary(summary);
         let tests: Vec<_> = errors.iter().map(|e| e.test.as_deref().unwrap()).collect();
-        assert_eq!(tests, ["unexpected-ok", "unexpected-pass", "failure"]);
+        assert_eq!(
+            tests,
+            [
+                "unexpected-ok",
+                "unexpected-pass",
+                "failure",
+                "unexpected-result-ok"
+            ]
+        );
     }
 
     #[test]

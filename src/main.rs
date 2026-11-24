@@ -2509,6 +2509,25 @@ mod tests {
     }
 
     #[test]
+    fn grouped_output_identifies_unexpected_successes() {
+        let error: ErrorLine = serde_json::from_str(
+            r#"{"action":"test_result","line":1,"test":"example","status":"OK","expected":"FAIL"}"#,
+        )
+        .unwrap();
+        let jobs = vec![JobWithLogs {
+            job: job("example-job", "linux", "testfailed", None),
+            errors: vec![error],
+            log_matches: vec![],
+            log_dir: None,
+        }];
+        let grouped = group_failures_by_test(&jobs);
+        assert!(format_grouped_markdown_summary("abc", 1, &grouped).contains("UNEXPECTED-OK"));
+        assert!(format_grouped_json_output("abc", 1, &grouped)
+            .unwrap()
+            .contains("UNEXPECTED-OK"));
+    }
+
+    #[test]
     fn explicit_name_filter_includes_all_results_unless_match_filter_is_set() {
         for (arguments, expected) in [
             (vec!["abc"], vec!["testfailed"]),

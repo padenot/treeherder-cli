@@ -142,6 +142,8 @@ pub struct ErrorLine {
     pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub expected: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub known_intermittent: Vec<String>,
     #[serde(default)]
     pub message: Option<String>,
     #[serde(default)]
@@ -421,7 +423,13 @@ pub fn group_failures_by_test(jobs: &[JobWithLogs]) -> Vec<GroupedTestFailure> {
                     platform: job_with_logs.job.platform.clone(),
                     job_type_name: job_with_logs.job.job_type_name.clone(),
                     subtest: error.subtest.clone(),
-                    message: error.message.clone(),
+                    message: match error.status.as_deref() {
+                        Some(status @ ("OK" | "PASS")) => Some(match &error.message {
+                            Some(message) => format!("UNEXPECTED-{status}: {message}"),
+                            None => format!("UNEXPECTED-{status}"),
+                        }),
+                        _ => error.message.clone(),
+                    },
                 };
                 test_map.entry(test_name.clone()).or_default().push(info);
             }
