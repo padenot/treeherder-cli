@@ -245,7 +245,6 @@ fn parse_actions(text: &str) -> Result<ActionsJson> {
     Ok(actions)
 }
 
-#[allow(dead_code)] // Used by the --add-jobs commit.
 pub async fn fetch_runnable_labels(client: &Client, decision: &DecisionRun) -> Result<Vec<String>> {
     let path = decision.cache_path("runnable");
     if let Some(labels) = path

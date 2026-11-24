@@ -184,26 +184,33 @@ pub struct Args {
     pub context: Option<u64>,
     #[arg(
         long,
-        conflicts_with = "retrigger",
+        conflicts_with_all = ["retrigger", "add_jobs"],
         help = "Cancel the pending/running jobs matching --filter/--platform (needs `treeherder-cli login`)"
     )]
     pub cancel: bool,
     #[arg(
         long,
-        conflicts_with_all = ["cancel", "retrigger"],
+        conflicts_with_all = ["cancel", "retrigger", "add_jobs"],
         help = "Cancel every job of the push (needs `treeherder-cli login`)"
     )]
     pub cancel_push: bool,
     #[arg(
         long,
+        conflicts_with = "add_jobs",
         help = "Retrigger jobs matching --filter/--platform/--match-filter (default: failures and exceptions) (needs `treeherder-cli login`)"
     )]
     pub retrigger: bool,
     #[arg(
         long,
+        value_name = "REGEX",
+        help = "Add the jobs whose task label matches REGEX, from all the jobs this push can run (needs `treeherder-cli login`)"
+    )]
+    pub add_jobs: Option<String>,
+    #[arg(
+        long,
         default_value_t = 1,
         value_parser = clap::value_parser!(u32).range(1..),
-        help = "How many copies to schedule with --retrigger"
+        help = "How many copies to schedule with --retrigger or --add-jobs"
     )]
     pub times: u32,
     #[arg(
@@ -213,7 +220,7 @@ pub struct Args {
     pub allow_many_runs: bool,
     #[arg(
         long,
-        help = "Show what --cancel/--cancel-push/--retrigger would do without doing it"
+        help = "Show what --cancel/--cancel-push/--retrigger/--add-jobs would do without doing it"
     )]
     pub dry_run: bool,
 }
