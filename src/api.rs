@@ -81,12 +81,39 @@ pub async fn fetch_revision_from_lando(
     let base_url = lando_base_url(instance.unwrap_or("lando-prod-2025"));
     let url = format!("https://{}/landing_jobs/{}/", base_url, commit_id);
 
+    fetch_lando_job(client, &url, commit_id).await
+}
+
+async fn fetch_lando_job(client: &Client, url: &str, commit_id: u64) -> Result<String> {
     #[derive(serde::Deserialize)]
     struct LandoJob {
         commit_id: Option<String>,
     }
 
-    let job: LandoJob = client.get(&url).send().await?.json().await?;
+    // If Lando returns a successful response with no body, retry once
+    // before reporting an error, rather than passing an empty body to JSON.
+    let mut body = client
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .bytes()
+        .await?;
+    if body.is_empty() {
+        body = client
+            .get(url)
+            .send()
+            .await?
+            .error_for_status()?
+            .bytes()
+            .await?;
+    }
+    anyhow::ensure!(
+        !body.is_empty(),
+        "Empty Lando response for job {}",
+        commit_id
+    );
+    let job: LandoJob = serde_json::from_slice(&body)?;
     job.commit_id
         .ok_or_else(|| anyhow::anyhow!("No commit_id in Lando response for job {}", commit_id))
 }
@@ -994,6 +1021,36 @@ mod tests {
             extract_lando_instance(url),
             Some("lando-prod-2025".to_string())
         );
+    }
+
+    #[tokio::test]
+    async fn lando_retries_an_empty_response() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!(
+            "http://{}/landing_jobs/120923/",
+            listener.local_addr().unwrap()
+        );
+        let server = tokio::spawn(async move {
+            for body in ["", r#"{"commit_id":"6d15fbee"}"#] {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = [0; 1024];
+                let n = stream.read(&mut request).await.unwrap();
+                assert!(String::from_utf8_lossy(&request[..n])
+                    .starts_with("GET /landing_jobs/120923/ "));
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        assert_eq!(
+            fetch_lando_job(&Client::new(), &url, 120923).await.unwrap(),
+            "6d15fbee"
+        );
+        server.await.unwrap();
     }
 
     #[tokio::test]
