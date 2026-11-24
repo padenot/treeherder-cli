@@ -3,7 +3,7 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -13,26 +13,49 @@ permissions:
 
 jobs:
   build-release:
-    name: Build Release
+    name: Release ${{ matrix.target }}
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             archive: tar.gz
+            binary: treeherder-cli
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            archive: tar.gz
+            binary: treeherder-cli
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            archive: tar.gz
+            binary: treeherder-cli
           - os: macos-latest
             target: x86_64-apple-darwin
             archive: tar.gz
+            binary: treeherder-cli
           - os: macos-latest
             target: aarch64-apple-darwin
             archive: tar.gz
+            binary: treeherder-cli
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             archive: zip
+            binary: treeherder-cli.exe
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
+
+      # The tag annotation holds the release notes.
+      - name: Fetch tag annotation
+        shell: bash
+        run: git fetch --force origin "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
+
+      - name: Derive version
+        id: version
+        shell: bash
+        run: echo "value=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -41,30 +64,62 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           key: ${{ matrix.target }}
-          workspaces: |
-            . -> target
 
-      - name: Build
-        run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Package (Unix)
-        if: matrix.archive == 'tar.gz'
+      - name: Install musl tools
+        if: matrix.target == 'x86_64-unknown-linux-musl'
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
-          cd target/${{ matrix.target }}/release
-          tar czf treeherder-cli-${VERSION}-${{ matrix.target }}.tar.gz treeherder-cli
-          mv treeherder-cli-${VERSION}-${{ matrix.target }}.tar.gz ${{ github.workspace }}
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
 
-      - name: Package (Windows)
+      - name: Install aarch64 Linux linker
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build release binary
+        run: cargo build --locked --release --target ${{ matrix.target }}
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+
+      - name: Package Unix archive
+        if: matrix.archive == 'tar.gz'
+        id: package_unix
+        shell: bash
+        run: |
+          archive="treeherder-cli-${{ steps.version.outputs.value }}-${{ matrix.target }}.tar.gz"
+          tar -C "target/${{ matrix.target }}/release" -czf "$archive" "${{ matrix.binary }}"
+          echo "asset=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Package Windows archive
         if: matrix.archive == 'zip'
+        id: package_windows
         shell: pwsh
         run: |
-          $version = $env:GITHUB_REF -replace 'refs/tags/v', ''
-          cd target/${{ matrix.target }}/release
-          7z a treeherder-cli-${version}-${{ matrix.target }}.zip treeherder-cli.exe
-          mv treeherder-cli-${version}-${{ matrix.target }}.zip ${{ github.workspace }}
+          $archive = "treeherder-cli-${{ steps.version.outputs.value }}-${{ matrix.target }}.zip"
+          Compress-Archive -Path "target/${{ matrix.target }}/release/${{ matrix.binary }}" -DestinationPath $archive
+          "asset=$archive" >> $env:GITHUB_OUTPUT
 
-      - name: Upload Release Assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: treeherder-cli-*
+      - name: Upload release asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ASSET: ${{ steps.package_unix.outputs.asset || steps.package_windows.outputs.asset }}
+        run: |
+          prerelease=()
+          if [[ "${GITHUB_REF_NAME}" == *-* ]]; then
+            prerelease=(--prerelease)
+          fi
+
+          git for-each-ref --format="%(contents)" "refs/tags/${GITHUB_REF_NAME}" > release-notes.md
+
+          # Every matrix job tries to create the release; the first one wins.
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+            gh release create "${GITHUB_REF_NAME}" \
+              --title "${GITHUB_REF_NAME}" \
+              --verify-tag \
+              --notes-file release-notes.md \
+              "${prerelease[@]}" || true
+          fi
+
+          gh release upload "${GITHUB_REF_NAME}" "${ASSET}" --clobber

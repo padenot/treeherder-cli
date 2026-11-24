@@ -9,7 +9,6 @@ repository = "https://github.com/padenot/treeherder-cli"
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ version }-{ target }.{ archive-format }"
 bin-dir = "{ bin }{ binary-ext }"
-pkg-fmt = "tgz"
 
 [dependencies]
 reqwest = { version = "0.13", default-features = false, features = ["json", "rustls", "gzip", "http2", "charset"] }
