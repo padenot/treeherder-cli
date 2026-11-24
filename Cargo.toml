@@ -28,6 +28,7 @@ notify-rust = "4.11"
 moz-cli-version-check = "0.3.0"
 taskcluster = { version = "117.1.0", default-features = false }
 json-e = "4.8.4"
+jiff = { version = "1.0.3", default-features = false, features = ["std", "serde"] }
 open = "5.4.5"
 slugid = "1.0.3"
 gethostname = "1.1.0"

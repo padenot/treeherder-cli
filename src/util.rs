@@ -18,6 +18,23 @@ pub fn write_atomic(path: &Path, contents: &[u8], sync: bool) -> Result<()> {
     Ok(())
 }
 
+pub fn is_llm_environment() -> bool {
+    std::env::var("CLAUDECODE").is_ok()
+        || std::env::var("CODEX_SANDBOX").is_ok()
+        || std::env::var("GEMINI_CLI").is_ok()
+        || std::env::var("OPENCODE").is_ok()
+}
+
+/// Tells the reader to run `command`. Agents can't complete an interactive
+/// login, so they are asked to relay it to the user, who runs it with `!`.
+pub fn run_hint(command: &str) -> String {
+    if is_llm_environment() {
+        format!("Ask the user to run: ! {command}")
+    } else {
+        format!("Run: {command}")
+    }
+}
+
 pub fn scope_satisfies(granted: &str, required: &str) -> bool {
     granted == required
         || granted
