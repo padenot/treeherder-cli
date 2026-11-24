@@ -86,26 +86,31 @@ fn has_range_request(args: &Args) -> bool {
 }
 
 fn has_action_request(args: &Args) -> bool {
-    args.cancel || args.cancel_push || args.retrigger
+    args.cancel || args.cancel_push || args.retrigger || args.add_jobs.is_some()
 }
 
 fn validate_action_args(args: &Args, matches: &clap::ArgMatches) -> Result<()> {
-    const ACTION_FLAGS: [&str; 3] = ["--cancel", "--cancel-push", "--retrigger"];
+    const ACTION_FLAGS: [&str; 4] = ["--cancel", "--cancel-push", "--retrigger", "--add-jobs"];
+    let schedules_jobs = args.retrigger || args.add_jobs.is_some();
     let explicit = |id: &str| matches.value_source(id) == Some(ValueSource::CommandLine);
-    if !args.retrigger && explicit("times") {
-        anyhow::bail!("--times requires --retrigger");
+    if !schedules_jobs && explicit("times") {
+        anyhow::bail!("--times requires --retrigger or --add-jobs");
     }
-    if !args.retrigger && !args.cancel && explicit("allow_many_runs") {
-        anyhow::bail!("--allow-many-runs requires --cancel or --retrigger");
+    if !schedules_jobs && !args.cancel && explicit("allow_many_runs") {
+        anyhow::bail!("--allow-many-runs requires --cancel, --retrigger or --add-jobs");
     }
     if !has_action_request(args) {
         if args.dry_run {
-            anyhow::bail!("--dry-run requires --cancel, --cancel-push or --retrigger");
+            anyhow::bail!("--dry-run requires --cancel, --cancel-push, --retrigger or --add-jobs");
         }
         return Ok(());
     }
 
-    for (flag, pattern) in [("--filter", &args.filter), ("--platform", &args.platform)] {
+    for (flag, pattern) in [
+        ("--filter", &args.filter),
+        ("--platform", &args.platform),
+        ("--add-jobs", &args.add_jobs),
+    ] {
         if pattern
             .as_deref()
             .is_some_and(|pattern| pattern.trim().is_empty())
@@ -115,7 +120,12 @@ fn validate_action_args(args: &Args, matches: &clap::ArgMatches) -> Result<()> {
     }
     let action = ACTION_FLAGS
         .into_iter()
-        .zip([args.cancel, args.cancel_push, args.retrigger])
+        .zip([
+            args.cancel,
+            args.cancel_push,
+            args.retrigger,
+            args.add_jobs.is_some(),
+        ])
         .find_map(|(flag, enabled)| enabled.then_some(flag))
         .unwrap();
     let conflicts: Vec<_> = [
@@ -170,13 +180,26 @@ fn validate_action_args(args: &Args, matches: &clap::ArgMatches) -> Result<()> {
             "--cancel-push takes no job selectors. Use --cancel with --filter or --platform to select jobs."
         );
     }
+    if args.add_jobs.is_some()
+        && (args.filter.is_some()
+            || args.platform.is_some()
+            || args.duration_min.is_some()
+            || args.include_intermittent
+            || match_filter_was_explicit)
+    {
+        anyhow::bail!(
+            "--add-jobs selects jobs using its task-label regex. Remove the other job selectors."
+        );
+    }
     if args.cancel && match_filter_was_explicit {
         anyhow::bail!(
             "--cancel selects pending and running jobs and does not accept --match-filter"
         );
     }
     if args.input.is_none() {
-        anyhow::bail!("--cancel, --cancel-push and --retrigger require INPUT (the push)");
+        anyhow::bail!(
+            "--cancel, --cancel-push, --retrigger and --add-jobs require INPUT (the push)"
+        );
     }
     Ok(())
 }
@@ -1653,7 +1676,10 @@ struct PlannedTrigger<'a> {
 impl PlannedTrigger<'_> {
     /// Whether the action creates tasks, rather than acting on existing ones.
     fn creates_tasks(&self) -> bool {
-        self.action.name == "retrigger-multiple"
+        matches!(
+            self.action.name.as_str(),
+            "add-new-jobs" | "retrigger-multiple"
+        )
     }
 }
 
@@ -1912,7 +1938,7 @@ impl ActionWatch<'_> {
     }
 }
 
-/// --cancel / --cancel-push / --retrigger: resolves the push's in-tree actions, triggers them,
+/// --cancel / --cancel-push / --retrigger / --add-jobs: resolves the push's in-tree actions, triggers them,
 /// and with --watch waits for the affected Taskcluster tasks.
 async fn run_action_mode(
     client: &Client,
@@ -1942,7 +1968,7 @@ async fn run_action_mode(
     let decision_task_id = decision.task_id.as_str();
 
     pb.set_message("Fetching jobs and actions");
-    let (jobs, actions) = tokio::try_join!(
+    let (jobs, actions, runnable_labels) = tokio::try_join!(
         async {
             if args.cancel || args.retrigger {
                 fetch_jobs(client, push.id).await
@@ -1951,11 +1977,19 @@ async fn run_action_mode(
             }
         },
         actions::fetch_actions(client, &decision),
+        async {
+            match args.add_jobs {
+                Some(_) => actions::fetch_runnable_labels(client, &decision).await,
+                None => Ok(vec![]),
+            }
+        }
     )?;
 
     // The SCM level comes from actions.json alone, so the login is checked
     // before the per-task work.
-    let possible_actions: &[&str] = if args.cancel_push {
+    let possible_actions: &[&str] = if args.add_jobs.is_some() {
+        &["add-new-jobs"]
+    } else if args.cancel_push {
         &["cancel-all"]
     } else if args.cancel {
         &["cancel", "cancel-all"]
@@ -1976,14 +2010,37 @@ async fn run_action_mode(
     let mut skipped_rerun_task_ids = Vec::new();
     let mut previous_reruns = HashMap::new();
     let mut watch_targets = BTreeSet::new();
-    let mut planned_runs = None;
-    let (summary, labels, planned) = if args.cancel_push {
+    let (summary, labels, planned, planned_runs) = if let Some(pattern) = &args.add_jobs {
+        let regex = Regex::new(pattern)?;
+        let labels: Vec<String> = runnable_labels
+            .into_iter()
+            .filter(|label| regex.is_match(label))
+            .collect();
+        if labels.is_empty() {
+            anyhow::bail!(
+                "No task label of this push matches --add-jobs '{}'",
+                pattern
+            );
+        }
+        let planned_runs = planned_run_count(labels.len(), args.times, 0)?;
+        let planned = vec![PlannedTrigger {
+            action: actions.find("add-new-jobs", None)?,
+            task_id: None,
+            input: serde_json::json!({ "tasks": labels, "times": args.times }),
+        }];
+        (
+            format!("add {} ×{}", jobs_count(labels.len()), args.times),
+            labels,
+            planned,
+            Some(planned_runs),
+        )
+    } else if args.cancel_push {
         let planned = vec![PlannedTrigger {
             action: actions.find("cancel-all", None)?,
             task_id: None,
             input: serde_json::json!({}),
         }];
-        ("cancel all jobs".to_string(), vec![], planned)
+        ("cancel all jobs".to_string(), vec![], planned, None)
     } else if args.cancel {
         let unfinished = |job: &&Job| job.state == "pending" || job.state == "running";
         let mut seen = HashSet::new();
@@ -2049,11 +2106,13 @@ async fn run_action_mode(
             .map(|(job, _)| job.job_type_name.clone())
             .collect();
         watch_targets.extend(targets.iter().map(|(_, id)| id.to_string()));
-        (
-            format!("cancel {}", jobs_count(targets.len())),
-            labels,
-            planned,
-        )
+        let mut summary = format!("cancel {}", jobs_count(targets.len()));
+        if cancel_all {
+            summary.push_str(
+                " (every pending and running task of the push, with one cancel-all action)",
+            );
+        }
+        (summary, labels, planned, None)
     } else {
         let candidates: Vec<_> = jobs
             .iter()
@@ -2139,12 +2198,13 @@ async fn run_action_mode(
                 jobs_count(rerun_task_ids.len())
             ));
         }
-        planned_runs = Some(planned_run_count(
-            clone_labels.len(),
-            args.times,
-            rerun_task_ids.len(),
-        )?);
-        (operations.join(" and "), labels, planned)
+        let planned_runs = planned_run_count(clone_labels.len(), args.times, rerun_task_ids.len())?;
+        (
+            operations.join(" and "),
+            labels,
+            planned,
+            Some(planned_runs),
+        )
     };
 
     // Each per-job cancel is an action task, so they count against the limit too.
@@ -2477,11 +2537,25 @@ mod tests {
         assert!(
             action_args(&["abc", "--retrigger", "--times", "101", "--allow-many-runs"]).is_ok()
         );
+        assert!(action_args(&[
+            "abc",
+            "--add-jobs",
+            "media",
+            "--times",
+            "101",
+            "--allow-many-runs"
+        ])
+        .is_ok());
         assert!(action_args(&["abc", "--cancel-push", "--allow-many-runs"]).is_err());
         assert!(action_args(&["abc", "--cancel", "--filter", "x", "--allow-many-runs"]).is_ok());
         assert!(action_args(&["abc", "--retrigger", "--compare", "def"]).is_err());
         assert!(action_args(&["abc", "--cancel-push", "--lookback", "5"]).is_err());
+        assert!(action_args(&["abc", "--add-jobs", "media", "--times", "2"]).is_ok());
+        assert!(action_args(&["abc", "--add-jobs", "media", "--platform", "linux"]).is_err());
         assert!(action_args(&["abc", "--cancel-push", "--match-filter", "failure"]).is_err());
+        assert!(action_args(&["abc", "--add-jobs", "media", "--retrigger"]).is_err());
+        assert!(action_args(&["abc", "--add-jobs", "media", "--cancel-push"]).is_err());
+        assert!(action_args(&["abc", "--add-jobs", "media", "--cancel", "--filter", "x"]).is_err());
         assert!(action_args(&["abc", "--dry-run"]).is_err());
         assert!(action_args(&["abc", "--times", "2"]).is_err());
     }
@@ -2504,6 +2578,10 @@ mod tests {
                 .to_string()
                 .contains("nonempty regex"));
         }
+        assert!(action_args(&["abc", "--add-jobs", ""])
+            .unwrap_err()
+            .to_string()
+            .contains("nonempty regex"));
         assert!(action_args(&["abc", "--filter", ""]).is_ok());
         let error = action_args(&[
             "abc",
