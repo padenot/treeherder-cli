@@ -1,10 +1,11 @@
+mod common;
+
 use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
-use std::process::Command;
 
 #[test]
 fn test_perf_flag_exists() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
 
     cmd.assert()
@@ -14,7 +15,7 @@ fn test_perf_flag_exists() {
 
 #[test]
 fn test_perf_help_text() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
 
     cmd.assert().success().stdout(predicate::str::contains(

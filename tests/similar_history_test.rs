@@ -1,8 +1,8 @@
-use std::process::Command;
+mod common;
 
 #[test]
 fn test_similar_history_flag_exists() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
     let output = cmd.output().expect("Failed to execute command");
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -11,7 +11,7 @@ fn test_similar_history_flag_exists() {
 
 #[test]
 fn test_similar_history_help_text() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
     let output = cmd.output().expect("Failed to execute command");
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -20,7 +20,7 @@ fn test_similar_history_help_text() {
 
 #[test]
 fn test_similar_count_flag_exists() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
     let output = cmd.output().expect("Failed to execute command");
     let stdout = String::from_utf8_lossy(&output.stdout);
@@ -29,7 +29,7 @@ fn test_similar_count_flag_exists() {
 
 #[test]
 fn test_similar_count_help_text() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
     let output = cmd.output().expect("Failed to execute command");
     let stdout = String::from_utf8_lossy(&output.stdout);

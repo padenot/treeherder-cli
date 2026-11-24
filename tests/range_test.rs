@@ -1,10 +1,11 @@
+mod common;
+
 use assert_cmd::assert::OutputAssertExt;
 use predicates::prelude::*;
-use std::process::Command;
 
 #[test]
 fn test_range_flags_exist() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--help");
 
     cmd.assert()
@@ -18,7 +19,7 @@ fn test_range_flags_exist() {
 
 #[test]
 fn test_range_rejects_open_range() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--range")
         .arg("abc123..")
         .arg("--repo")
@@ -31,7 +32,7 @@ fn test_range_rejects_open_range() {
 
 #[test]
 fn test_from_and_to_must_be_used_together() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--from")
         .arg("abc123")
         .arg("--repo")
@@ -44,7 +45,7 @@ fn test_from_and_to_must_be_used_together() {
 
 #[test]
 fn test_range_incompatible_with_watch() {
-    let mut cmd = Command::new(assert_cmd::cargo::cargo_bin!("treeherder-cli"));
+    let mut cmd = common::treeherder_cli();
     cmd.arg("--range")
         .arg("abc123..def456")
         .arg("--watch")
