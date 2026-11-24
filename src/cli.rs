@@ -190,6 +190,7 @@ pub struct Args {
     pub cancel: bool,
     #[arg(
         long,
+        visible_alias = "cancel-all",
         conflicts_with_all = ["cancel", "retrigger", "add_jobs"],
         help = "Cancel every job of the push (needs `treeherder-cli login`)"
     )]

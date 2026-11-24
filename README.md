@@ -99,6 +99,7 @@ requests one in-place rerun per selected task in the failed or exception state.
 Use `--allow-many-runs` to submit a plan for more than 100 total requested runs.
 The total counts each requested copy and each in-place rerun once.
 
+`--cancel-push` (also spelled `--cancel-all`) cancels the whole push.
 `--cancel` triggers one cancel action per job. When it selects every pending and
 running task of the push, it uses a single cancel-all action instead, which also
 cancels the tasks waiting on them. More than 100 per-job cancels need

@@ -2528,6 +2528,8 @@ mod tests {
     #[test]
     fn action_flags_need_a_push_and_exclude_other_modes() {
         assert!(action_args(&["abc", "--cancel-push"]).is_ok());
+        assert!(action_args(&["abc", "--cancel-all", "--dry-run"]).is_ok());
+        assert!(action_args(&["abc", "--cancel-all", "--filter", "x"]).is_err());
         assert!(action_args(&["abc", "--cancel", "--filter", "media"]).is_ok());
         assert!(action_args(&["abc", "--cancel", "--platform", "linux"]).is_ok());
         assert!(action_args(&["abc", "--cancel"]).is_err());
