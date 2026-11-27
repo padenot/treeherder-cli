@@ -140,6 +140,15 @@ pub fn runs_selected_tests(job_type_name: &str) -> bool {
         .any(|kind| job_type_name.contains(kind))
 }
 
+/// True when `group` is a `parent.toml:included.toml` name with `manifest` on
+/// either side. Each parent runs its includes in its own configuration, so such
+/// groups are suggested to the user rather than counted as `manifest`.
+pub fn group_includes(group: &str, manifest: &str) -> bool {
+    group != manifest
+        && group.split(':').count() > 1
+        && group.split(':').any(|part| part == manifest)
+}
+
 /// Rough suite filter used to avoid downloading errorsummaries of jobs that
 /// cannot run `manifest`. Unknown manifest kinds match every test job, and
 /// WPT verification and coverage jobs match WPT groups.
@@ -218,6 +227,19 @@ mod tests {
         assert!(!group_contains_test("a/b/xpcshell.toml", "a/test_x.js"));
         assert!(group_contains_test("/css/foo", "/css/foo/bar.html"));
         assert!(!group_contains_test("xpcshell-selftest", "test_x.js"));
+    }
+
+    #[test]
+    fn finds_included_manifests() {
+        let group = "t/xpcshell-remote.toml:t/xpcshell-common.toml";
+        assert!(group_includes(group, "t/xpcshell-common.toml"));
+        assert!(group_includes(group, "t/xpcshell-remote.toml"));
+        assert!(!group_includes(group, group));
+        assert!(!group_includes(group, "t/xpcshell.toml"));
+        assert!(!group_includes(
+            "t/xpcshell-common.toml",
+            "t/xpcshell-common.toml"
+        ));
     }
 
     #[test]

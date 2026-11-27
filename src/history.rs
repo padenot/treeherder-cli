@@ -1,7 +1,7 @@
 use crate::api::GroupResults;
-use crate::groups::{job_may_run_group, GroupEvidence, GroupRun};
+use crate::groups::{group_includes, job_may_run_group, GroupEvidence, GroupRun};
 use crate::models::*;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 pub struct PushGroupResults {
     pub push: PushRef,
@@ -11,6 +11,15 @@ pub struct PushGroupResults {
     /// Group evidence read from the errorsummary of tasks without a result for
     /// the manifest in `results`; None when the task had no readable errorsummary.
     pub evidence: HashMap<String, Option<GroupEvidence>>,
+}
+
+impl PushGroupResults {
+    /// True when --filter/--platform select the task, or no filter is set.
+    pub fn allows(&self, task_id: &str) -> bool {
+        self.allowed_tasks
+            .as_ref()
+            .is_none_or(|allowed| allowed.contains(task_id))
+    }
 }
 
 /// Results older than the last pass needed before the history stops fetching.
@@ -89,6 +98,36 @@ pub fn build_group_history(
         first_failed,
         predates_window,
         pushes: entries,
+        included_as: Vec::new(),
+    }
+}
+
+/// Group names of the tasks selected by --filter/--platform on a push that
+/// hold `manifest` as one side of `parent.toml:included.toml`.
+pub fn included_group_names(manifest: &str, push: &PushGroupResults) -> BTreeSet<String> {
+    let endpoint = push
+        .results
+        .iter()
+        .filter(|(task_id, _)| push.allows(task_id))
+        .flat_map(|(_, groups)| groups.keys());
+    let errorsummaries = push
+        .evidence
+        .iter()
+        .filter(|(task_id, _)| push.allows(task_id))
+        .filter_map(|(_, evidence)| evidence.as_ref())
+        .flat_map(|evidence| evidence.groups());
+    endpoint
+        .chain(errorsummaries)
+        .filter(|group| group_includes(group, manifest))
+        .cloned()
+        .collect()
+}
+
+/// Lists `names` when no push has a result for the manifest itself, so a
+/// manifest that only runs through parent manifests is not just "not-run".
+pub fn suggest_included_names(history: &mut GroupHistory, names: BTreeSet<String>) {
+    if !history.pushes.iter().any(|push| push.state.has_result()) {
+        history.included_as = names.into_iter().collect();
     }
 }
 
@@ -118,20 +157,23 @@ pub fn is_settled<'a>(entries: impl IntoIterator<Item = &'a GroupHistoryPush>) -
 }
 
 pub fn summarize_push(manifest: &str, push: PushGroupResults) -> GroupHistoryPush {
-    let allowed = |task_id: &String| {
-        push.allowed_tasks
-            .as_ref()
-            .is_none_or(|allowed| allowed.contains(task_id))
-    };
     let (mut ok, mut fail, mut unknown) = (0, 0, 0);
-    for (_, groups) in push.results.iter().filter(|(task_id, _)| allowed(task_id)) {
+    for (_, groups) in push
+        .results
+        .iter()
+        .filter(|(task_id, _)| push.allows(task_id))
+    {
         match groups.get(manifest) {
             Some(true) => ok += 1,
             Some(false) => fail += 1,
             None => {}
         }
     }
-    for (task_id, evidence) in push.evidence.iter().filter(|(task_id, _)| allowed(task_id)) {
+    for (task_id, evidence) in push
+        .evidence
+        .iter()
+        .filter(|(task_id, _)| push.allows(task_id))
+    {
         if has_endpoint_result(&push.results, task_id, manifest) {
             continue;
         }
@@ -497,6 +539,86 @@ mod tests {
         let entry = replay_errorsummary_push(&fixture.manifest, push, &unreadable);
         assert_eq!((entry.ok, entry.fail), (0, 0));
         assert_eq!(entry.state, GroupState::Unknown);
+    }
+
+    #[test]
+    fn suggests_names_of_manifests_run_through_a_parent() {
+        let manifest = "toolkit/x/xpcshell-common.toml";
+        let remote = "toolkit/x/xpcshell-remote.toml:toolkit/x/xpcshell-common.toml";
+        let plain = "toolkit/x/xpcshell.toml:toolkit/x/xpcshell-common.toml";
+        let push = PushGroupResults {
+            push: PushRef {
+                id: 1,
+                revision: "abc".to_string(),
+                push_timestamp: 1,
+            },
+            results: HashMap::from([(
+                "t1".to_string(),
+                HashMap::from([(remote.to_string(), false)]),
+            )]),
+            allowed_tasks: None,
+            evidence: HashMap::from([(
+                "t2".to_string(),
+                GroupEvidence::parse(&format!(
+                    r#"{{"groups": ["{plain}", "other/xpcshell.toml"], "action": "test_groups", "line": 1}}"#
+                )),
+            )]),
+        };
+
+        let names = included_group_names(manifest, &push);
+
+        // With --filter/--platform, only selected tasks suggest names.
+        let filtered = PushGroupResults {
+            push: push.push.clone(),
+            results: push.results.clone(),
+            allowed_tasks: Some(HashSet::from(["t2".to_string()])),
+            evidence: push.evidence.clone(),
+        };
+        assert_eq!(
+            included_group_names(manifest, &filtered),
+            BTreeSet::from([plain.to_string()])
+        );
+        let filtered = PushGroupResults {
+            allowed_tasks: Some(HashSet::from(["t1".to_string()])),
+            ..filtered
+        };
+        assert_eq!(
+            included_group_names(manifest, &filtered),
+            BTreeSet::from([remote.to_string()])
+        );
+        assert_eq!(
+            names,
+            BTreeSet::from([plain.to_string(), remote.to_string()])
+        );
+
+        // Neither variant is counted as the manifest itself.
+        let entry = summarize_push(manifest, push);
+        assert_eq!(
+            (entry.ok, entry.fail, entry.state),
+            (0, 0, GroupState::NotRun)
+        );
+        let mut history = build_group_history(manifest, vec![entry], 1);
+        suggest_included_names(&mut history, names.clone());
+        assert_eq!(
+            history.included_as,
+            vec![remote.to_string(), plain.to_string()]
+        );
+
+        // Once the manifest has results of its own the names are not needed.
+        let mut history = build_group_history(
+            manifest,
+            vec![GroupHistoryPush {
+                push_id: 1,
+                revision: "abc".to_string(),
+                timestamp: 1,
+                ok: 1,
+                fail: 0,
+                state: GroupState::Pass,
+            }],
+            1,
+        );
+        suggest_included_names(&mut history, names);
+        assert!(history.included_as.is_empty());
     }
 
     #[test]

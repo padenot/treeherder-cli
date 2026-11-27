@@ -683,6 +683,20 @@ pub fn format_group_history_markdown(history: &GroupHistory) -> String {
                 .yellow()
         ));
     }
+    if !history.included_as.is_empty() {
+        output.push_str(&format!(
+            "{}\n",
+            "no group is named exactly like this manifest; it runs through other manifests as:"
+                .yellow()
+        ));
+        for name in &history.included_as {
+            output.push_str(&format!("  {}\n", name));
+        }
+        output.push_str(&format!(
+            "{}\n",
+            "rerun --group-history with one of these names".yellow()
+        ));
+    }
     output.push('\n');
 
     for push in &history.pushes {

@@ -60,6 +60,7 @@ INPUT: revision hash|Treeherder URL|Lando commit ID (numeric or URL with ?landoC
 --group-history <manifest> pass/fail of a test manifest per push before INPUT|--lookback <N> (default 50, max 300)
   fetches newest first and stops after the last pass; widen --lookback only on "failure predates window"
   per push: ok/fail counts, not-run, or unknown (no result could be read)
+  manifests included by a parent run as parent.toml:included.toml; the output suggests those names
 --test <regex> restrict --suspects to matching test names
 --duration-min <N> only jobs longer than N seconds
 --context <N> show N pushes before and after this push (for bisecting autoland failures)
@@ -709,8 +710,10 @@ async fn run_group_history_mode(
 
     let mut slots: Vec<Option<GroupHistoryPush>> = vec![None; window_pushes];
     let mut settled_prefix = 0;
+    let mut included_names = BTreeSet::new();
     while let Some(result) = fetches.next().await {
         let (index, push) = result?;
+        included_names.extend(included_group_names(manifest, &push));
         slots[index] = Some(summarize_push(manifest, push));
         while slots.get(settled_prefix).is_some_and(Option::is_some) {
             settled_prefix += 1;
@@ -727,7 +730,8 @@ async fn run_group_history_mode(
     pb.finish_and_clear();
 
     let entries: Vec<GroupHistoryPush> = slots.drain(..settled_prefix).flatten().collect();
-    let history = build_group_history(manifest, entries, window_pushes);
+    let mut history = build_group_history(manifest, entries, window_pushes);
+    suggest_included_names(&mut history, included_names);
 
     if args.json {
         println!("{}", format_group_history_json(&history)?);

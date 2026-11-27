@@ -289,6 +289,10 @@ pub struct GroupHistory {
     pub first_failed: Option<GroupHistoryPush>,
     pub last_passed: Option<GroupHistoryPush>,
     pub predates_window: bool,
+    /// `parent:included` group names containing the manifest, listed when no
+    /// group is named exactly like it.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub included_as: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

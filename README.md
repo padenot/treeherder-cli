@@ -65,6 +65,9 @@ pass was observed.
 Results come from Treeherder's `group_results`, and for tasks it has no result
 of the manifest for (including backfills and retriggers) from each job's errorsummary. A push is
 `unknown` when jobs that may run the manifest have no readable errorsummary.
+A manifest included by other manifests runs once per parent, under names like
+`parent.toml:included.toml`; when no group carries the exact name given,
+`--group-history` lists those names so the history can be rerun for one of them.
 Use `--filter` / `--platform` to restrict it to one job. Lookback defaults to 50
 pushes, with a maximum of 300; fetching can stop earlier once the boundary is found.
 
