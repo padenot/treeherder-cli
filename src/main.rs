@@ -3,6 +3,7 @@ mod api;
 mod auth;
 mod cache;
 mod cli;
+mod groups;
 mod history;
 mod models;
 mod output;
@@ -54,6 +55,7 @@ INPUT: revision hash|Treeherder URL|Lando commit ID (numeric or URL with ?landoC
 --similar-history <job-id> job history via similar_jobs API|--similar-count <N> (default 50)
 --group-history <manifest> pass/fail of a test manifest per push before INPUT|--lookback <N> (default 50, max 300)
   fetches newest first and stops after the last pass; widen --lookback only on "failure predates window"
+  per push: ok/fail counts, not-run, or unknown (no result could be read)
 --test <regex> restrict --suspects to matching test names
 --duration-min <N> only jobs longer than N seconds
 --context <N> show N pushes before and after this push (for bisecting autoland failures)
@@ -630,26 +632,37 @@ async fn run_group_history_mode(
             let client = Arc::clone(&client);
             let repo = repo.clone();
             let selector = Arc::clone(&selector);
+            let manifest = manifest.to_string();
             async move {
-                let allowed_tasks = if selector.has_name_filter() {
-                    Some(
-                        fetch_jobs(&client, push.id)
-                            .await?
-                            .into_iter()
-                            .filter(|job| selector.matches_name(job))
-                            .filter_map(|job| job.task_id)
-                            .collect::<HashSet<_>>(),
-                    )
-                } else {
-                    None
-                };
+                let jobs = fetch_jobs(&client, push.id).await?;
+                let allowed_tasks = selector.has_name_filter().then(|| {
+                    jobs.iter()
+                        .filter(|job| selector.matches_name(job))
+                        .filter_map(|job| job.task_id.clone())
+                        .collect::<HashSet<_>>()
+                });
                 let results = fetch_group_results(&client, &repo, &push.revision).await?;
+                // group_results can be empty or partial (Treeherder has not
+                // parsed the errorsummary yet), so read the errorsummary of
+                // tasks that may run the manifest and have no result for it.
+                let candidates =
+                    jobs_needing_evidence(&manifest, &jobs, &results, allowed_tasks.as_ref());
+                let job_ids: Vec<u64> = candidates.iter().map(|job| job.id).collect();
+                let mut by_job = fetch_group_evidence_for_jobs(&client, &repo, &job_ids).await;
+                let evidence = candidates
+                    .into_iter()
+                    .filter_map(|job| {
+                        let task_id = job.task_id.clone()?;
+                        Some((task_id, by_job.remove(&job.id).flatten()))
+                    })
+                    .collect();
                 Ok::<_, anyhow::Error>((
                     index,
                     PushGroupResults {
                         push,
                         results,
                         allowed_tasks,
+                        evidence,
                     },
                 ))
             }

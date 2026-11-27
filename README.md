@@ -53,6 +53,9 @@ failure. Pushes where the job did not run remain candidates. If the oldest push
 already fails, widen `--lookback` or inspect `--group-history`.
 
 `--group-history` counts a push as failing when at least as many tasks fail as pass.
+Results come from Treeherder's `group_results`, and for tasks it has no result
+of the manifest for (including backfills and retriggers) from each job's errorsummary. A push is
+`unknown` when jobs that may run the manifest have no readable errorsummary.
 Use `--filter` / `--platform` to restrict it to one job. Lookback defaults to 50
 pushes, with a maximum of 300; fetching can stop earlier once the boundary is found.
 

@@ -262,6 +262,8 @@ pub enum GroupState {
     Mixed,
     Fail,
     NotRun,
+    /// Jobs that may run the manifest exist, but none had readable group results.
+    Unknown,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -142,7 +142,7 @@ pub struct Args {
     #[arg(
         long,
         value_name = "MANIFEST",
-        help = "Show pass/fail history of a test manifest (e.g. dom/tests/xpcshell.toml) across the pushes before INPUT"
+        help = "Show pass/fail history of a test manifest (e.g. dom/tests/xpcshell.toml) across the pushes before INPUT; a push is unknown when no result for the manifest could be read"
     )]
     pub group_history: Option<String>,
     #[arg(long, help = "Download job artifacts")]

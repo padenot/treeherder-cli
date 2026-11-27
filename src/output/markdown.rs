@@ -680,6 +680,7 @@ pub fn format_group_history_markdown(history: &GroupHistory) -> String {
     for push in &history.pushes {
         let counts = match push.state {
             GroupState::NotRun => "not-run".dimmed().to_string(),
+            GroupState::Unknown => "unknown".yellow().to_string(),
             GroupState::Pass => format!("ok={} fail={}", push.ok, push.fail)
                 .green()
                 .to_string(),
