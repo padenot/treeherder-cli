@@ -16,6 +16,7 @@ use cache::*;
 use clap::{parser::ValueSource, CommandFactory, FromArgMatches};
 use cli::{Args, Command, MatchFilter};
 use futures::stream::{self, StreamExt};
+use groups::GroupEvidence;
 use history::*;
 use indicatif::{ProgressBar, ProgressStyle};
 use models::*;
@@ -47,6 +48,9 @@ INPUT: revision hash|Treeherder URL|Lando commit ID (numeric or URL with ?landoC
 --compare <REV> show only failures not in REV
 --range <A..B>|--from <A> --to <B>|--lookback <N> analyze a range of pushes
 --suspects infer candidate push windows for first observed failures in a range
+  push states: fail|pass|other-fail|pending|not-run|unknown; a job counts as a pass for a test only if its
+  errorsummary shows the test's manifest ran OK (else not-run; unknown when unreadable); confidence:
+  high = last pass right before first failure, medium = several candidates, low = no pass observed
 --show-stack-traces show crash stack traces|--all-crash-threads all threads|--full-stack registers+annotations
 --fetch-logs download full logs|--pattern <regex> search logs|--match-filter failure|success|all
 --cache-dir <DIR> store logs|--use-cache read from cache (no download)
@@ -447,7 +451,7 @@ async fn fetch_observations_for_jobs(
     repo: &str,
     jobs: Vec<(PushRef, Job)>,
     message: &'static str,
-) -> Result<Vec<JobObservation>> {
+) -> Result<(Vec<JobObservation>, HashMap<u64, GroupEvidence>)> {
     let pb = ProgressBar::new(jobs.len() as u64);
     pb.set_style(
         ProgressStyle::default_bar()
@@ -458,15 +462,15 @@ async fn fetch_observations_for_jobs(
     pb.set_message(message);
     let pb = Arc::new(pb);
 
-    let observations = stream::iter(jobs)
+    let fetched: Vec<_> = stream::iter(jobs)
         .map(|(push, job)| {
             let client = Arc::clone(&client);
             let repo = repo.to_string();
             let pb = Arc::clone(&pb);
             async move {
-                let result = fetch_job_details_with_errors(&client, &repo, job).await;
+                let result = fetch_job_details_with_errors_and_groups(&client, &repo, job).await;
                 pb.inc(1);
-                result.map(|(job, errors)| JobObservation { push, job, errors })
+                result.map(|(job, errors, groups)| (JobObservation { push, job, errors }, groups))
             }
         })
         .buffer_unordered(10)
@@ -483,7 +487,15 @@ async fn fetch_observations_for_jobs(
         .collect();
 
     pb.finish_with_message("Completed fetching job details");
-    Ok(observations)
+    let mut evidence = HashMap::new();
+    let mut observations = Vec::with_capacity(fetched.len());
+    for (observation, groups) in fetched {
+        if let Some(groups) = groups {
+            evidence.insert(observation.job.id, groups);
+        }
+        observations.push(observation);
+    }
+    Ok((observations, evidence))
 }
 
 fn failed_jobs_from_pushes(push_jobs: &[PushJobs]) -> Vec<(PushRef, Job)> {
@@ -538,11 +550,37 @@ async fn run_range_mode(
     if args.suspects {
         let filtered_push_jobs = filter_push_jobs(&push_jobs, &selector, None);
         let failed_jobs = failed_jobs_from_pushes(&filtered_push_jobs);
-        let observations =
-            fetch_observations_for_jobs(client, &repo, failed_jobs, "Fetching failed job details")
-                .await?;
-        let mut analysis = analyze_range_suspects(&repo, &filtered_push_jobs, &observations);
-        if let Some(test_regex) = args.test.as_deref().map(Regex::new).transpose()? {
+        let (observations, mut evidence) = fetch_observations_for_jobs(
+            Arc::clone(&client),
+            &repo,
+            failed_jobs,
+            "Fetching failed job details",
+        )
+        .await?;
+        let test_regex = args.test.as_deref().map(Regex::new).transpose()?;
+        let evidence_jobs: Vec<u64> =
+            jobs_needing_group_evidence(&filtered_push_jobs, &observations, test_regex.as_ref())
+                .iter()
+                .map(|job| job.id)
+                .collect();
+        if !evidence_jobs.is_empty() {
+            let pb = ProgressBar::new_spinner();
+            pb.set_message(format!(
+                "Reading test groups of {} earlier jobs",
+                evidence_jobs.len()
+            ));
+            pb.enable_steady_tick(Duration::from_millis(120));
+            let fetched = fetch_group_evidence_for_jobs(&client, &repo, &evidence_jobs).await;
+            pb.finish_and_clear();
+            evidence.extend(
+                fetched
+                    .into_iter()
+                    .filter_map(|(job_id, groups)| groups.map(|groups| (job_id, groups))),
+            );
+        }
+        let mut analysis =
+            analyze_range_suspects(&repo, &filtered_push_jobs, &observations, &evidence);
+        if let Some(test_regex) = test_regex {
             analysis.suspects.retain(|suspect| {
                 suspect
                     .failure_key
@@ -569,7 +607,7 @@ async fn run_range_mode(
             return Ok(());
         }
 
-        let observations =
+        let (observations, _) =
             fetch_observations_for_jobs(client, &repo, jobs, "Fetching range job details").await?;
         let pushes = filtered_push_jobs
             .iter()

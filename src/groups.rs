@@ -99,11 +99,45 @@ impl GroupEvidence {
             None => GroupRun::NotRun,
         }
     }
+
+    pub fn groups(&self) -> impl Iterator<Item = &String> {
+        self.scheduled
+            .iter()
+            .chain(self.results.keys().filter(|g| !self.scheduled.contains(*g)))
+    }
 }
 
 fn normalize(path: &str) -> String {
     let path = path.trim().replace('\\', "/");
     path.strip_prefix("./").unwrap_or(&path).to_string()
+}
+
+/// True when `test` lives under the directory `group` covers: the manifest's
+/// directory, or the group itself for directory groups such as WPT paths.
+pub fn group_contains_test(group: &str, test: &str) -> bool {
+    let test = normalize(test);
+    normalize(group).split(':').any(|part| {
+        let dir = if is_manifest_file(part) {
+            part.rsplit_once('/').map_or("", |(dir, _)| dir)
+        } else {
+            part
+        };
+        !dir.is_empty() && test.starts_with(dir) && test[dir.len()..].starts_with('/')
+    })
+}
+
+fn is_manifest_file(path: &str) -> bool {
+    [".toml", ".ini", ".list", ".json", ".yml", ".yaml"]
+        .iter()
+        .any(|ext| path.ends_with(ext))
+}
+
+/// True for test-verify and test-coverage jobs, which run the tests a push
+/// touches rather than whole manifests.
+pub fn runs_selected_tests(job_type_name: &str) -> bool {
+    ["-test-verify", "-test-coverage"]
+        .iter()
+        .any(|kind| job_type_name.contains(kind))
 }
 
 /// Rough suite filter used to avoid downloading errorsummaries of jobs that
@@ -116,10 +150,7 @@ pub fn job_may_run_group(job_type_name: &str, manifest: &str) -> bool {
     let manifest = normalize(manifest);
     // test-verify and test-coverage jobs run tests of any suite, but only
     // their WPT variants upload an errorsummary to read groups from.
-    if ["-test-verify", "-test-coverage"]
-        .iter()
-        .any(|kind| job_type_name.contains(kind))
-    {
+    if runs_selected_tests(job_type_name) {
         return manifest.starts_with('/') && job_type_name.contains("-wpt");
     }
     let file = manifest
@@ -177,6 +208,16 @@ mod tests {
             GroupEvidence::parse(r#"{"action": "log", "message": "hi", "line": 1}"#),
             None
         );
+    }
+
+    #[test]
+    fn maps_tests_to_groups() {
+        assert!(group_contains_test("a/b/xpcshell.toml", "a/b/test_x.js"));
+        assert!(group_contains_test("a\\b\\xpcshell.toml", "a/b/test_x.js"));
+        assert!(!group_contains_test("a/b/xpcshell.toml", "a/bc/test_x.js"));
+        assert!(!group_contains_test("a/b/xpcshell.toml", "a/test_x.js"));
+        assert!(group_contains_test("/css/foo", "/css/foo/bar.html"));
+        assert!(!group_contains_test("xpcshell-selftest", "test_x.js"));
     }
 
     #[test]

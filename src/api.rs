@@ -597,7 +597,7 @@ pub async fn fetch_error_summary(client: &Client, log_url: &str) -> Result<Vec<E
     }
 }
 
-fn parse_error_summary(text: &str) -> Vec<ErrorLine> {
+pub(crate) fn parse_error_summary(text: &str) -> Vec<ErrorLine> {
     text.lines()
         .filter_map(|line| serde_json::from_str::<ErrorLine>(line).ok())
         .filter(|error| {
@@ -660,6 +660,7 @@ fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
                         line: 0,
                         test: Some(test_name),
                         subtest: None,
+                        group: None,
                         status: Some(status.to_string()),
                         expected: None,
                         known_intermittent: vec![],
@@ -678,6 +679,7 @@ fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
                     line: 0,
                     test: None,
                     subtest: None,
+                    group: None,
                     status: Some("TIMEOUT".to_string()),
                     expected: None,
                     known_intermittent: vec![],
@@ -698,6 +700,17 @@ pub async fn fetch_job_details_with_errors(
     repo: &str,
     job: Job,
 ) -> Result<(Job, Vec<ErrorLine>)> {
+    let (job, errors, _) = fetch_job_details_with_errors_and_groups(client, repo, job).await?;
+    Ok((job, errors))
+}
+
+/// Like `fetch_job_details_with_errors`, also returning the test groups the
+/// errorsummary shows the job ran.
+pub async fn fetch_job_details_with_errors_and_groups(
+    client: &Client,
+    repo: &str,
+    job: Job,
+) -> Result<(Job, Vec<ErrorLine>, Option<GroupEvidence>)> {
     let job_detail = fetch_job_details(client, repo, job.id).await?;
 
     let has_errorsummary = job_detail
@@ -705,19 +718,28 @@ pub async fn fetch_job_details_with_errors(
         .iter()
         .any(|l| l.url.contains("errorsummary"));
 
-    let error_futures: Vec<_> = job_detail
+    let summary_futures: Vec<_> = job_detail
         .logs
         .iter()
         .filter(|log_ref| log_ref.name.contains("error") || log_ref.name.contains("summary"))
-        .map(|log_ref| fetch_error_summary(client, &log_ref.url))
+        .filter(|log_ref| log_ref.url.contains("errorsummary"))
+        .map(|log_ref| fetch_text_following_taskcluster_redirect(client, &log_ref.url))
         .collect();
 
-    let error_results = futures::future::join_all(error_futures).await;
+    let summary_results = futures::future::join_all(summary_futures).await;
 
     let mut all_errors = Vec::new();
-    for result in error_results {
+    let mut groups: Option<GroupEvidence> = None;
+    for result in summary_results {
         match result {
-            Ok(errors) => all_errors.extend(errors),
+            Ok(text) => {
+                all_errors.extend(parse_error_summary(&text));
+                if let Some(evidence) = GroupEvidence::parse(&text) {
+                    groups
+                        .get_or_insert_with(GroupEvidence::default)
+                        .merge(evidence);
+                }
+            }
             Err(e) => eprintln!("Failed to fetch error summary: {}", e),
         }
     }
@@ -734,7 +756,7 @@ pub async fn fetch_job_details_with_errors(
         }
     }
 
-    Ok((job, all_errors))
+    Ok((job, all_errors, groups))
 }
 
 /// Job log listing; Treeherder accepts several job_id parameters per request.
@@ -1252,7 +1274,7 @@ mod tests {
             .await
             .into_iter()
             .collect::<Result<Vec<_>>>()?;
-        let analysis = analyze_range_suspects(&repo, &push_jobs, &observations);
+        let analysis = analyze_range_suspects(&repo, &push_jobs, &observations, &HashMap::new());
 
         let fixture_observations = observations
             .iter()

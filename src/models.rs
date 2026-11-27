@@ -138,6 +138,9 @@ pub struct ErrorLine {
     pub test: Option<String>,
     #[serde(default)]
     pub subtest: Option<String>,
+    /// Manifest the test belongs to, as written by the errorsummary.
+    #[serde(default, skip_serializing)]
+    pub group: Option<String>,
     #[serde(default)]
     pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -215,6 +218,8 @@ pub enum FailureState {
     OtherFail,
     NotRun,
     Pending,
+    /// A matching job completed, but nothing shows whether it ran the test.
+    Unknown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

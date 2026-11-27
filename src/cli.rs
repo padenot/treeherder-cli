@@ -131,7 +131,7 @@ pub struct Args {
     pub lookback: Option<u64>,
     #[arg(
         long,
-        help = "Infer likely candidate push windows for first observed failures in a range"
+        help = "Infer likely candidate push windows for first observed failures in a range. A push passes a failing test only when a job's errorsummary shows the test's manifest ran OK; other pushes are not-run, or unknown when no errorsummary could be read. Confidence: high when the last pass is right before the first failure, medium with more candidates in between, low when no pass was observed"
     )]
     pub suspects: bool,
     #[arg(

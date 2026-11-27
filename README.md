@@ -52,6 +52,15 @@ treeherder-cli --similar-history 543981186 --similar-count 100 --repo autoland
 failure. Pushes where the job did not run remain candidates. If the oldest push
 already fails, widen `--lookback` or inspect `--group-history`.
 
+A successful job counts as a pass for a failing test only when its errorsummary
+shows that the test's manifest ran and finished OK. Autoland jobs often run only
+some manifests, so a job that succeeded without the manifest is `not-run`. A job
+whose errorsummary cannot be read is `unknown`, and so is a test-verify or
+test-coverage job, which runs only selected tests of a manifest. Neither one ends
+the candidate window. Confidence is `high` when the last pass is the push right before the first
+failure, `medium` when more candidate pushes lie between them, and `low` when no
+pass was observed.
+
 `--group-history` counts a push as failing when at least as many tasks fail as pass.
 Results come from Treeherder's `group_results`, and for tasks it has no result
 of the manifest for (including backfills and retriggers) from each job's errorsummary. A push is

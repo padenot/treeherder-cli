@@ -744,6 +744,7 @@ fn format_failure_state(state: FailureState) -> &'static str {
         FailureState::OtherFail => "other-fail",
         FailureState::NotRun => "not-run",
         FailureState::Pending => "pending",
+        FailureState::Unknown => "unknown",
     }
 }
 
