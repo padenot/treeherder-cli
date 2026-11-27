@@ -594,11 +594,19 @@ pub fn format_range_suspects_markdown(result: &RangeAnalysisResult) -> String {
                 last_pass.id
             ));
         } else {
+            let oldest_failing = window
+                .candidate_pushes
+                .first()
+                .is_some_and(|entry| entry.state == FailureState::Fail);
+            let reason = if oldest_failing {
+                "failure predates window (oldest push in window already failing); widen --lookback or use --group-history"
+            } else {
+                "failure predates window (no earlier push in window shows the test passing); widen --lookback or use --group-history"
+            };
             output.push_str(&format!(
                 "    last pass:    {}\n    {}\n",
                 "not observed".yellow(),
-                "failure predates window (oldest push in window already failing); widen --lookback or use --group-history"
-                    .yellow()
+                reason.yellow()
             ));
         }
         output.push_str(&format!(
@@ -675,11 +683,26 @@ pub fn format_group_history_markdown(history: &GroupHistory) -> String {
                 .yellow()
         ));
     }
+    if !history.included_as.is_empty() {
+        output.push_str(&format!(
+            "{}\n",
+            "no group is named exactly like this manifest; it runs through other manifests as:"
+                .yellow()
+        ));
+        for name in &history.included_as {
+            output.push_str(&format!("  {}\n", name));
+        }
+        output.push_str(&format!(
+            "{}\n",
+            "rerun --group-history with one of these names".yellow()
+        ));
+    }
     output.push('\n');
 
     for push in &history.pushes {
         let counts = match push.state {
             GroupState::NotRun => "not-run".dimmed().to_string(),
+            GroupState::Unknown => "unknown".yellow().to_string(),
             GroupState::Pass => format!("ok={} fail={}", push.ok, push.fail)
                 .green()
                 .to_string(),
@@ -743,6 +766,7 @@ fn format_failure_state(state: FailureState) -> &'static str {
         FailureState::OtherFail => "other-fail",
         FailureState::NotRun => "not-run",
         FailureState::Pending => "pending",
+        FailureState::Unknown => "unknown",
     }
 }
 

@@ -4,7 +4,7 @@
     "repo": "autoland",
     "recorded_from": "https://treeherder.mozilla.org/jobs?repo=autoland&revision=2c4d5da411656b4a3aea51a96c4b205ea7b7f26e",
     "push_ids": [1979941, 1979944, 1979946, 1979947, 1979948],
-    "note": "Trimmed real Treeherder data: only the target job is retained for replay."
+    "note": "Trimmed real Treeherder data: only the target job is retained for replay. The fixture has no errorsummary group evidence, so the 26-second successful job on 1979941 cannot show that it ran the failing test's manifest: it is unknown, not a pass."
   },
   "repo": "autoland",
   "pushes": [
@@ -98,8 +98,8 @@
     "test": "browser/components/customizableui/test/browser_1003588_no_specials_in_panel.js",
     "subtest": "checkDragging",
     "first_failed_push_id": 1979948,
-    "last_pass_push_id": 1979941,
-    "candidate_push_ids": [1979944, 1979946, 1979947, 1979948],
-    "confidence": "medium"
+    "last_pass_push_id": null,
+    "candidate_push_ids": [1979941, 1979944, 1979946, 1979947, 1979948],
+    "confidence": "low"
   }
 }

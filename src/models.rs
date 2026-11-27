@@ -138,6 +138,9 @@ pub struct ErrorLine {
     pub test: Option<String>,
     #[serde(default)]
     pub subtest: Option<String>,
+    /// Manifest the test belongs to, as written by the errorsummary.
+    #[serde(default, skip_serializing)]
+    pub group: Option<String>,
     #[serde(default)]
     pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -215,6 +218,8 @@ pub enum FailureState {
     OtherFail,
     NotRun,
     Pending,
+    /// A matching job completed, but nothing shows whether it ran the test.
+    Unknown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -262,6 +267,8 @@ pub enum GroupState {
     Mixed,
     Fail,
     NotRun,
+    /// Jobs that may run the manifest exist, but none had readable group results.
+    Unknown,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -282,6 +289,10 @@ pub struct GroupHistory {
     pub first_failed: Option<GroupHistoryPush>,
     pub last_passed: Option<GroupHistoryPush>,
     pub predates_window: bool,
+    /// `parent:included` group names containing the manifest, listed when no
+    /// group is named exactly like it.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub included_as: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

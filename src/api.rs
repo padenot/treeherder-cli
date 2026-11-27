@@ -1,7 +1,10 @@
+use crate::groups::GroupEvidence;
 use crate::models::*;
 use anyhow::Result;
+use futures::stream::{self, StreamExt};
 use regex::Regex;
 use reqwest::Client;
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -594,7 +597,7 @@ pub async fn fetch_error_summary(client: &Client, log_url: &str) -> Result<Vec<E
     }
 }
 
-fn parse_error_summary(text: &str) -> Vec<ErrorLine> {
+pub(crate) fn parse_error_summary(text: &str) -> Vec<ErrorLine> {
     text.lines()
         .filter_map(|line| serde_json::from_str::<ErrorLine>(line).ok())
         .filter(|error| {
@@ -657,6 +660,7 @@ fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
                         line: 0,
                         test: Some(test_name),
                         subtest: None,
+                        group: None,
                         status: Some(status.to_string()),
                         expected: None,
                         known_intermittent: vec![],
@@ -675,6 +679,7 @@ fn parse_live_log_failures(text: &str) -> Vec<ErrorLine> {
                     line: 0,
                     test: None,
                     subtest: None,
+                    group: None,
                     status: Some("TIMEOUT".to_string()),
                     expected: None,
                     known_intermittent: vec![],
@@ -695,6 +700,17 @@ pub async fn fetch_job_details_with_errors(
     repo: &str,
     job: Job,
 ) -> Result<(Job, Vec<ErrorLine>)> {
+    let (job, errors, _) = fetch_job_details_with_errors_and_groups(client, repo, job).await?;
+    Ok((job, errors))
+}
+
+/// Like `fetch_job_details_with_errors`, also returning the test groups the
+/// errorsummary shows the job ran.
+pub async fn fetch_job_details_with_errors_and_groups(
+    client: &Client,
+    repo: &str,
+    job: Job,
+) -> Result<(Job, Vec<ErrorLine>, Option<GroupEvidence>)> {
     let job_detail = fetch_job_details(client, repo, job.id).await?;
 
     let has_errorsummary = job_detail
@@ -702,19 +718,28 @@ pub async fn fetch_job_details_with_errors(
         .iter()
         .any(|l| l.url.contains("errorsummary"));
 
-    let error_futures: Vec<_> = job_detail
+    let summary_futures: Vec<_> = job_detail
         .logs
         .iter()
         .filter(|log_ref| log_ref.name.contains("error") || log_ref.name.contains("summary"))
-        .map(|log_ref| fetch_error_summary(client, &log_ref.url))
+        .filter(|log_ref| log_ref.url.contains("errorsummary"))
+        .map(|log_ref| fetch_text_following_taskcluster_redirect(client, &log_ref.url))
         .collect();
 
-    let error_results = futures::future::join_all(error_futures).await;
+    let summary_results = futures::future::join_all(summary_futures).await;
 
     let mut all_errors = Vec::new();
-    for result in error_results {
+    let mut groups: Option<GroupEvidence> = None;
+    for result in summary_results {
         match result {
-            Ok(errors) => all_errors.extend(errors),
+            Ok(text) => {
+                all_errors.extend(parse_error_summary(&text));
+                if let Some(evidence) = GroupEvidence::parse(&text) {
+                    groups
+                        .get_or_insert_with(GroupEvidence::default)
+                        .merge(evidence);
+                }
+            }
             Err(e) => eprintln!("Failed to fetch error summary: {}", e),
         }
     }
@@ -731,7 +756,105 @@ pub async fn fetch_job_details_with_errors(
         }
     }
 
-    Ok((job, all_errors))
+    Ok((job, all_errors, groups))
+}
+
+/// Job log listing; Treeherder accepts several job_id parameters per request.
+#[derive(Deserialize)]
+struct JobLogUrl {
+    job_id: u64,
+    name: String,
+    url: String,
+}
+
+const JOB_LOG_URL_BATCH: usize = 40;
+const ERRORSUMMARY_CONCURRENCY: usize = 8;
+
+const TREEHERDER_API: &str = "https://treeherder.mozilla.org/api";
+
+/// Errorsummary log URLs of each job. A batch that cannot be listed leaves its
+/// jobs out, so they stay unknown, without losing the other batches.
+async fn fetch_errorsummary_urls(
+    client: &Client,
+    api: &str,
+    repo: &str,
+    job_ids: &[u64],
+) -> HashMap<u64, Vec<String>> {
+    let mut urls: HashMap<u64, Vec<String>> = HashMap::new();
+    for chunk in job_ids.chunks(JOB_LOG_URL_BATCH) {
+        let query = chunk
+            .iter()
+            .map(|id| format!("job_id={}", id))
+            .collect::<Vec<_>>()
+            .join("&");
+        let url = format!("{}/project/{}/job-log-url/?{}", api, repo, query);
+        let logs = match list_job_logs(client, &url).await {
+            Ok(logs) => logs,
+            Err(e) => {
+                eprintln!(
+                    "Failed to list errorsummary logs of {} jobs: {}",
+                    chunk.len(),
+                    e
+                );
+                continue;
+            }
+        };
+        for log in logs.into_iter().filter(|l| l.name == "errorsummary_json") {
+            urls.entry(log.job_id).or_default().push(log.url);
+        }
+    }
+    urls
+}
+
+async fn list_job_logs(client: &Client, url: &str) -> Result<Vec<JobLogUrl>> {
+    Ok(client
+        .get(url)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?)
+}
+
+/// Group evidence of each job from its errorsummary logs. A job maps to None
+/// when it has no errorsummary or it could not be read: nothing is known about
+/// what it ran.
+pub async fn fetch_group_evidence_for_jobs(
+    client: &Client,
+    repo: &str,
+    job_ids: &[u64],
+) -> HashMap<u64, Option<GroupEvidence>> {
+    let mut evidence: HashMap<u64, Option<GroupEvidence>> =
+        job_ids.iter().map(|id| (*id, None)).collect();
+    if job_ids.is_empty() {
+        return evidence;
+    }
+    let urls = fetch_errorsummary_urls(client, TREEHERDER_API, repo, job_ids).await;
+    let fetched: Vec<_> = stream::iter(urls)
+        .map(|(job_id, urls)| async move {
+            let mut groups: Option<GroupEvidence> = None;
+            for url in urls {
+                match fetch_text_following_taskcluster_redirect(client, &url).await {
+                    Ok(text) => {
+                        if let Some(parsed) = GroupEvidence::parse(&text) {
+                            groups
+                                .get_or_insert_with(GroupEvidence::default)
+                                .merge(parsed);
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to fetch error summary for job {}: {}", job_id, e);
+                        return (job_id, None);
+                    }
+                }
+            }
+            (job_id, groups)
+        })
+        .buffer_unordered(ERRORSUMMARY_CONCURRENCY)
+        .collect()
+        .await;
+    evidence.extend(fetched);
+    evidence
 }
 
 pub async fn fetch_and_save_log(
@@ -1025,6 +1148,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn log_listing_keeps_batches_around_a_failed_one() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api = format!("http://{}/api", listener.local_addr().unwrap());
+        let log = |job_id: u64| {
+            format!(
+                r#"[{{"job_id":{job_id},"name":"errorsummary_json","url":"https://example/{job_id}.log"}},
+                    {{"job_id":{job_id},"name":"live_backing_log","url":"https://example/{job_id}.txt"}}]"#
+            )
+        };
+        // Three batches: the second one fails, the others list one log each.
+        let responses = [
+            ("200 OK", log(1)),
+            ("500 Internal Server Error", "oops".to_string()),
+            ("200 OK", log(81)),
+        ];
+        let server = tokio::spawn(async move {
+            for (status, body) in responses {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                let mut request = [0; 4096];
+                let _ = stream.read(&mut request).await.unwrap();
+                let response = format!(
+                    "HTTP/1.1 {status}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                stream.write_all(response.as_bytes()).await.unwrap();
+            }
+        });
+        let client = Client::builder().http1_only().build().unwrap();
+        let job_ids: Vec<u64> = (1..=81).collect();
+
+        let urls = fetch_errorsummary_urls(&client, &api, "autoland", &job_ids).await;
+        server.abort();
+        assert_eq!(
+            urls.get(&1),
+            Some(&vec!["https://example/1.log".to_string()])
+        );
+        assert_eq!(
+            urls.get(&81),
+            Some(&vec!["https://example/81.log".to_string()])
+        );
+        assert_eq!(urls.len(), 2);
+    }
+
+    #[tokio::test]
     async fn lando_retries_an_empty_response() {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -1106,7 +1274,7 @@ mod tests {
             .await
             .into_iter()
             .collect::<Result<Vec<_>>>()?;
-        let analysis = analyze_range_suspects(&repo, &push_jobs, &observations);
+        let analysis = analyze_range_suspects(&repo, &push_jobs, &observations, &HashMap::new());
 
         let fixture_observations = observations
             .iter()

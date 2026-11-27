@@ -1,0 +1,583 @@
+{
+ "name": "autoland takeCensus_11 backout: reduced scheduling, successful jobs that never ran the manifest",
+ "source": {
+  "repo": "autoland",
+  "range": "0113da388da0..40436a9f3343",
+  "recorded_at_utc": "2026-11-27T13:25:00Z",
+  "note": "Real Treeherder jobs and Taskcluster errorsummary_json logs. Only three job types are kept; errorsummaries keep test_groups (heapsnapshot plus two unrelated groups), heapsnapshot group_result lines and takeCensus_11 test results."
+ },
+ "repo": "autoland",
+ "test": "devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js",
+ "pushes": [
+  {
+   "push": {
+    "id": 2125340,
+    "revision": "0113da388da06e372682dae034a138a87943daff",
+    "push_timestamp": 1795766140
+   },
+   "jobs": [
+    {
+     "id": 610742903,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "success",
+     "state": "completed",
+     "failure_classification_id": 1,
+     "duration": 16,
+     "task_id": "ZIkVq6VqT2GOSb2Z0xv4aw"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125342,
+    "revision": "5ea45217f29391fe79cb9e2307d38ced1e8315b1",
+    "push_timestamp": 1795766498
+   },
+   "jobs": [
+    {
+     "id": 610691897,
+     "job_type_name": "test-macosx1015-64-qr/opt-xpcshell",
+     "job_type_symbol": "X",
+     "platform": "macosx1015-64-qr",
+     "platform_option": "opt",
+     "result": "success",
+     "state": "completed",
+     "failure_classification_id": 1,
+     "duration": 2,
+     "task_id": "QH5FuYePT2OwTr5d0AQ4iw"
+    },
+    {
+     "id": 610741409,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 18,
+     "task_id": "O2uM4mfxSWiND6EcK_WXzg"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125344,
+    "revision": "0ceb67f4d3f0c71f5b394522cee7cff94c2b7bd5",
+    "push_timestamp": 1795766709
+   },
+   "jobs": [
+    {
+     "id": 610741197,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 16,
+     "task_id": "XL0a5Ku_QmyBBd0kH8v2YA"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125345,
+    "revision": "c721062de602320f259e63f44c0638419fcc4d83",
+    "push_timestamp": 1795767529
+   },
+   "jobs": [
+    {
+     "id": 610741233,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 16,
+     "task_id": "ND0IY0qHTF2wXFc78LMCOg"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125353,
+    "revision": "c680b91bdd925824f934138868a3402a1ccb99f2",
+    "push_timestamp": 1795769412
+   },
+   "jobs": [
+    {
+     "id": 610741236,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 16,
+     "task_id": "Ade4CEHtRO-jLU5kY_E3Tg"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125363,
+    "revision": "d43d29e5df6d8dc16d9840f0b76317ec6d365aca",
+    "push_timestamp": 1795770316
+   },
+   "jobs": [
+    {
+     "id": 610741305,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 16,
+     "task_id": "LVxUXhdwTg6kABgxDRq8zA"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125366,
+    "revision": "b23aea77b4f730e5ddfb7a19096d5408c0e9172e",
+    "push_timestamp": 1795771098
+   },
+   "jobs": [
+    {
+     "id": 610696970,
+     "job_type_name": "test-linux2404-64-asan/opt-xpcshell",
+     "job_type_symbol": "X",
+     "platform": "linux2404-64-asan",
+     "platform_option": "opt",
+     "result": "success",
+     "state": "completed",
+     "failure_classification_id": 1,
+     "duration": 16,
+     "task_id": "IJt-y4LPSFOJlppkTsrHeQ"
+    },
+    {
+     "id": 610741307,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 16,
+     "task_id": "OWFhOdENQyS6iSYFxEYp7g"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125371,
+    "revision": "02389d88663f02776d07c94deaa3e24beb2573d1",
+    "push_timestamp": 1795771826
+   },
+   "jobs": [
+    {
+     "id": 610741309,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "T5uITaUUT4-mPyF0bQg8uQ"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125372,
+    "revision": "fbc11786a04a13cf0440e9686e911db0f8cb2b00",
+    "push_timestamp": 1795771848
+   },
+   "jobs": [
+    {
+     "id": 610741311,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 18,
+     "task_id": "d_hCNe-fTVC6ffbAsTQDcw"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125374,
+    "revision": "c5b99520976c0ff84b4e2d2554ec5034e998b2d6",
+    "push_timestamp": 1795772316
+   },
+   "jobs": [
+    {
+     "id": 610741374,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 16,
+     "task_id": "Ve0d9JsEQeqAyD6LlXihYQ"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125375,
+    "revision": "a00975f04f364da61d505a0085bb1c2684185e35",
+    "push_timestamp": 1795772376
+   },
+   "jobs": [
+    {
+     "id": 610734988,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 18,
+     "task_id": "WEQnTroaSqm3QXR2Y6e5nA"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125380,
+    "revision": "2398a5315d683b9ec2a477151679a300ad9a6759",
+    "push_timestamp": 1795773154
+   },
+   "jobs": [
+    {
+     "id": 610734987,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "DqjzcIuoSCOguk1FYm2Ohg"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125393,
+    "revision": "401211c362467e48edc2d6d114767634c0591661",
+    "push_timestamp": 1795773901
+   },
+   "jobs": [
+    {
+     "id": 610734989,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "AtATeYrITdWi1_VfdG7GeA"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125394,
+    "revision": "546c7cbf36ad70609df90aae843eb830b215d8a4",
+    "push_timestamp": 1795773924
+   },
+   "jobs": [
+    {
+     "id": 610734991,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "X6SZa7MLQL-rwFag1C8tsA"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125408,
+    "revision": "2b30ef59e1e0ea6f43defa9ca23fcba16bc91960",
+    "push_timestamp": 1795774320
+   },
+   "jobs": [
+    {
+     "id": 610734995,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "E_OLQIlQQDKI3M5QL0cznQ"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125414,
+    "revision": "8f4455a66b25e0d216ee0f534840f86af2a93ac4",
+    "push_timestamp": 1795774932
+   },
+   "jobs": [
+    {
+     "id": 610735004,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "KxF2wSTMTz2qdkshu6srOA"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125417,
+    "revision": "1f8a7765102d7b7682b1357cf018653198459c4d",
+    "push_timestamp": 1795775188
+   },
+   "jobs": [
+    {
+     "id": 610735003,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 16,
+     "task_id": "Nk45SWPQQXG0vmPByOLGGg"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125424,
+    "revision": "ccf8a849900f47ef35e5699771af7614257ab1cf",
+    "push_timestamp": 1795775361
+   },
+   "jobs": [
+    {
+     "id": 610735005,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "UMC-XfLfQz-TSkwZdm53BQ"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125427,
+    "revision": "0d91e1ccb91975b2ebe20b7294500d7f4453a673",
+    "push_timestamp": 1795775616
+   },
+   "jobs": [
+    {
+     "id": 610735006,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X-98faa66dfc9-bk",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "eRLupNydSca9Uk1Foye7_Q"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125431,
+    "revision": "98faa66dfc9b1b52da026b2ad6c42878ecf7d34e",
+    "push_timestamp": 1795775771
+   },
+   "jobs": [
+    {
+     "id": 610722155,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "cvohkyPVSLeDu6P_B9FVuQ"
+    },
+    {
+     "id": 610722670,
+     "job_type_name": "test-linux2404-64-asan/opt-xpcshell",
+     "job_type_symbol": "X",
+     "platform": "linux2404-64-asan",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 28,
+     "task_id": "POnx0FMcTLuddot3uiySHg"
+    },
+    {
+     "id": 610722893,
+     "job_type_name": "test-macosx1015-64-qr/opt-xpcshell",
+     "job_type_symbol": "X",
+     "platform": "macosx1015-64-qr",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 54,
+     "task_id": "f-11vAC7SEGUCcRkakBwRw"
+    },
+    {
+     "id": 610734979,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 16,
+     "task_id": "SLTahWFPRUeOkeRee2mmpg"
+    },
+    {
+     "id": 610734980,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 16,
+     "task_id": "DnaDh3NJQ6eft2o5oCqtIg"
+    },
+    {
+     "id": 610734981,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "IXR0kQaMStauczRHFF3E2Q"
+    },
+    {
+     "id": 610734982,
+     "job_type_name": "test-linux2404-64/opt-xpcshell",
+     "job_type_symbol": "X",
+     "platform": "linux2404-64",
+     "platform_option": "opt",
+     "result": "testfailed",
+     "state": "completed",
+     "failure_classification_id": 2,
+     "duration": 17,
+     "task_id": "UtEk2Xa-R5Ghj7D_VU4i7A"
+    }
+   ]
+  },
+  {
+   "push": {
+    "id": 2125433,
+    "revision": "a2b63ab1097352e6861b90c6942307bf53cedf08",
+    "push_timestamp": 1795775935
+   },
+   "jobs": []
+  },
+  {
+   "push": {
+    "id": 2125446,
+    "revision": "73a44612b78a81c6961f962b4cd13595e2723323",
+    "push_timestamp": 1795777017
+   },
+   "jobs": []
+  },
+  {
+   "push": {
+    "id": 2125563,
+    "revision": "40436a9f334350d1b95bd746aee7abd2cf42a2ba",
+    "push_timestamp": 1795780726
+   },
+   "jobs": []
+  }
+ ],
+ "errorsummaries": {
+  "610742903": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 164700, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 164700, \"action\": \"group_result\", \"line\": 16111}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"OK\", \"duration\": 1258, \"action\": \"group_result\", \"line\": 16111}\n",
+  "610691897": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 271091, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"js/xpconnect/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 207}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 271091, \"action\": \"group_result\", \"line\": 519}\n",
+  "610741409": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 162975, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16603}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16703}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16705}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 162975, \"action\": \"group_result\", \"line\": 16724}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1560, \"action\": \"group_result\", \"line\": 16724}\n",
+  "610741197": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 160512, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16781}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16881}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16883}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 160512, \"action\": \"group_result\", \"line\": 16904}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1562, \"action\": \"group_result\", \"line\": 16904}\n",
+  "610741233": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 161038, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16018}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16118}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16120}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 161038, \"action\": \"group_result\", \"line\": 16139}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1567, \"action\": \"group_result\", \"line\": 16139}\n",
+  "610741236": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 152908, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16493}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16593}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16595}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 152908, \"action\": \"group_result\", \"line\": 16614}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1587, \"action\": \"group_result\", \"line\": 16614}\n",
+  "610741305": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 166629, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16265}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16365}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16367}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 166629, \"action\": \"group_result\", \"line\": 16382}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1545, \"action\": \"group_result\", \"line\": 16382}\n",
+  "610696970": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 135694, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"browser/components/migration/tests/unit/xpcshell.toml\", \"browser/components/urlbar/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 135694, \"action\": \"group_result\", \"line\": 4118}\n",
+  "610741307": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 150194, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 19601}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 19701}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 19703}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 150194, \"action\": \"group_result\", \"line\": 19722}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1596, \"action\": \"group_result\", \"line\": 19722}\n",
+  "610741309": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 171238, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16474}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16574}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16576}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 171238, \"action\": \"group_result\", \"line\": 16595}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1574, \"action\": \"group_result\", \"line\": 16595}\n",
+  "610741311": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 168896, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16701}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16801}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16803}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 168896, \"action\": \"group_result\", \"line\": 16820}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1558, \"action\": \"group_result\", \"line\": 16820}\n",
+  "610741374": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 162790, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15904}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16004}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16006}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 162790, \"action\": \"group_result\", \"line\": 16023}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1573, \"action\": \"group_result\", \"line\": 16023}\n",
+  "610734988": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 161820, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16187}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16287}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16289}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 161820, \"action\": \"group_result\", \"line\": 16309}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1686, \"action\": \"group_result\", \"line\": 16309}\n",
+  "610734987": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 138645, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16095}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16195}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16197}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 138645, \"action\": \"group_result\", \"line\": 16216}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1652, \"action\": \"group_result\", \"line\": 16216}\n",
+  "610734989": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 168205, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 17039}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 17139}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 17141}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 168205, \"action\": \"group_result\", \"line\": 17160}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1634, \"action\": \"group_result\", \"line\": 17160}\n",
+  "610734991": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 173328, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15807}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15907}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15909}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 173328, \"action\": \"group_result\", \"line\": 15926}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1497, \"action\": \"group_result\", \"line\": 15926}\n",
+  "610734995": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 157489, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15906}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16006}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16008}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 157489, \"action\": \"group_result\", \"line\": 16029}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1543, \"action\": \"group_result\", \"line\": 16029}\n",
+  "610735004": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 148516, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15682}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15782}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15784}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 148516, \"action\": \"group_result\", \"line\": 15799}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1582, \"action\": \"group_result\", \"line\": 15799}\n",
+  "610735003": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 160358, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15911}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16011}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16013}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 160358, \"action\": \"group_result\", \"line\": 16030}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1610, \"action\": \"group_result\", \"line\": 16030}\n",
+  "610735005": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 140199, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15956}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16056}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16058}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 140199, \"action\": \"group_result\", \"line\": 16073}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1581, \"action\": \"group_result\", \"line\": 16073}\n",
+  "610735006": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 161268, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16353}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16453}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16455}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 161268, \"action\": \"group_result\", \"line\": 16478}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1512, \"action\": \"group_result\", \"line\": 16478}\n",
+  "610722155": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 147026, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15672}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15772}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15774}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 147026, \"action\": \"group_result\", \"line\": 15791}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1535, \"action\": \"group_result\", \"line\": 15791}\n",
+  "610722670": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 135662, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 212}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 12862}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 12962}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 12964}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 135662, \"action\": \"group_result\", \"line\": 12975}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 6767, \"action\": \"group_result\", \"line\": 12975}\n",
+  "610722893": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 640351, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 13564}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/opt/worker/tasks/task_179577431390560/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/opt/worker/tasks/task_179577431390560/buil\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 13664}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 13666}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 640351, \"action\": \"group_result\", \"line\": 13682}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 5921, \"action\": \"group_result\", \"line\": 13682}\n",
+  "610734979": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 160115, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15714}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15814}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15816}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 160115, \"action\": \"group_result\", \"line\": 15833}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1595, \"action\": \"group_result\", \"line\": 15833}\n",
+  "610734980": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 155646, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15909}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16009}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 16011}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 155646, \"action\": \"group_result\", \"line\": 16031}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1536, \"action\": \"group_result\", \"line\": 16031}\n",
+  "610734981": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 140195, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15732}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15832}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 15834}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 140195, \"action\": \"group_result\", \"line\": 15849}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1542, \"action\": \"group_result\", \"line\": 15849}\n",
+  "610734982": "{\"groups\": [\"xpcshell-selftest\"], \"action\": \"test_groups\", \"line\": 51}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 145403, \"action\": \"group_result\", \"line\": 197}\n{\"groups\": [\"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"browser/components/about/test/unit/xpcshell.toml\", \"browser/components/aboutlogins/tests/unit/xpcshell.toml\"], \"action\": \"test_groups\", \"line\": 211}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"xpcshell return code: 0\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 17029}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": \"run_test\", \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"[run_test : 74] 11 == 2\", \"stack\": \"/builds/worker/workspace/build/tests/xpcshell/tests/devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js:run_test:74\\n/builds/worker/workspace/build/tests/xpcshell/head.js:_ex\", \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 17129}\n{\"test\": \"devtools/shared/heapsnapshot/tests/xpcshell/test_HeapSnapshot_takeCensus_11.js\", \"subtest\": null, \"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"FAIL\", \"expected\": \"PASS\", \"message\": \"profile uploaded in profile_test_HeapSnapshot_takeCensus_11-2.js.json.gz\", \"stack\": null, \"modifiers\": \"\", \"known_intermittent\": [], \"action\": \"test_result\", \"line\": 17131}\n{\"group\": \"xpcshell-selftest\", \"status\": \"OK\", \"duration\": 145403, \"action\": \"group_result\", \"line\": 17154}\n{\"group\": \"devtools/shared/heapsnapshot/tests/xpcshell/xpcshell.toml\", \"status\": \"ERROR\", \"duration\": 1601, \"action\": \"group_result\", \"line\": 17154}\n"
+ }
+}
