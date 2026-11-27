@@ -594,11 +594,19 @@ pub fn format_range_suspects_markdown(result: &RangeAnalysisResult) -> String {
                 last_pass.id
             ));
         } else {
+            let oldest_failing = window
+                .candidate_pushes
+                .first()
+                .is_some_and(|entry| entry.state == FailureState::Fail);
+            let reason = if oldest_failing {
+                "failure predates window (oldest push in window already failing); widen --lookback or use --group-history"
+            } else {
+                "failure predates window (no earlier push in window shows the test passing); widen --lookback or use --group-history"
+            };
             output.push_str(&format!(
                 "    last pass:    {}\n    {}\n",
                 "not observed".yellow(),
-                "failure predates window (oldest push in window already failing); widen --lookback or use --group-history"
-                    .yellow()
+                reason.yellow()
             ));
         }
         output.push_str(&format!(
